@@ -26,8 +26,11 @@ saveenv
 Then reset supply.
 
 Rootfs is created buildroot. 
+Firstly it must be unpacked.
 rootfs.ext2 should be copied to second partition /dev/sdb
 ```
+7z x rootfs_gcc.7z
+mv rootfs_gcc.ext2 rootfs.ext2
 sudo dd if=output/images/rootfs.ext2 of=/dev/sdb2 bs=1M status=progress
 ```
 
