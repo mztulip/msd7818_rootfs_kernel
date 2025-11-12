@@ -25,7 +25,7 @@ saveenv
 ```
 Then reset supply.
 
-Rootfs is created buildroot. 
+Rootfs is created with buildroot. 
 Firstly it must be unpacked.
 rootfs.ext2 should be copied to second partition /dev/sdb
 ```
