@@ -1,4 +1,7 @@
-Kernel source: https://github.com/maniekx86/linux_msd781x/commits/mstar_v6_7_rebase/
+Kernel source: https://github.com/mztulip/linux_msd781x (branch `mstar_v6_7_rebase`),
+a fork of https://github.com/maniekx86/linux_msd781x/commits/mstar_v6_7_rebase/
+with the WIWA HD95 (MSD7818) changes listed below. Config: `wiwa_hd95_defconfig`.
+
 Compiled using:
 
 
@@ -7,32 +10,105 @@ mipsel-linux-gnu-gcc --version
 mipsel-linux-gnu-gcc (GCC) 12.2.0
 ```
 
+## Contents
 
-Kernel can be booted from FAT partition. 
-To prepare pendrive create two partions.
-1. Fat32 about 100MB
-2. parition type Linux, should be larger than rootfs.ext2 file
+| File | What |
+|---|---|
+| `vmlinux.bin` | kernel 6.7.0-rc6 with appended DTB, entry point **`0x805e86a4`** |
+| `logofix/logofix.bin` | MBoot helper that fixes the boot logo colours, run before the kernel (source and `build.sh` next to it) |
+| `modules/i2c-mstar-miic.ko` | hardware I2C (MIIC) driver, bus 0 = MxL5007T tuner at `0x60` |
+| `modules/mstar-fd650-panel.ko` | front panel: POWER / CH+ / CH- keys and the 4-digit display |
+| `rootfs_gcc.7z` | Buildroot rootfs (ext2) with gcc |
 
-```
-usb reset 0
-fatload usb 0 0x80000000 vmlinux.bin
-go 0x805db8a0
-```
-Kernel loading can be automated:
-```
-setenv bootcmd 'usb reset 0;fatload usb 0 0x80000000 vmlinux.bin;go 0x805db8a0'
-saveenv
-```
-Then reset supply.
+## What is new in this kernel
 
-Rootfs is created with buildroot. 
-Firstly it must be unpacked.
-rootfs.ext2 should be copied to second partition /dev/sdb
+- **Correct colours, 65536 instead of 4096.** MBoot's `osd_create 1 1` sets
+  GOP format 2, which is ARGB4444, not RGB565, and the old kernel converted
+  everything to xRGB4444. It also garbled the WIWA boot logo (green
+  rectangle, wrong colours). `logofix` replaces `osd_create`: it converts the
+  logo (YUV 4:2:2) to RGB565 and switches the GOP to format 1 (real RGB565)
+  at vsync, so the logo stays correct until Linux takes over the same buffer.
+  **This kernel needs `logofix` instead of `osd_create`**, otherwise the
+  colours are wrong (for example a light blue console).
+- **I2C driver** for the Kronus hardware I2C master (a Philips SIO1 style
+  engine), pinmux set from the DTS.
+- **Front panel driver** (FD650/TM1650 style controller on the PM SAR pins).
+- Both drivers are **modules**: built into the kernel they make the HDMI
+  picture jitter.
+
+## Pendrive
+
+To prepare the pendrive, create two partitions:
+1. FAT32, about 100 MB: copy `vmlinux.bin` and `logofix/logofix.bin` there
+2. a Linux partition, larger than the `rootfs.ext2` file
+
+Rootfs is created with buildroot. It must be unpacked first.
+Copy rootfs.ext2 to the second partition of the pendrive (here `/dev/sdb2`):
 ```
 7z x rootfs_gcc.7z
 mv rootfs_gcc.ext2 rootfs.ext2
-sudo dd if=output/images/rootfs.ext2 of=/dev/sdb2 bs=1M status=progress
+sudo dd if=rootfs.ext2 of=/dev/sdb2 bs=1M status=progress
 ```
+
+## Booting
+
+Serial console 115200 8N1. Press Enter during power-on to get the
+`<< MStar >>#` prompt.
+
+```
+usb start
+fatload usb 0 0x80F00000 logofix.bin
+go 0x80F00000
+fatload usb 0 0x80000000 vmlinux.bin
+go 0x805e86a4
+```
+`go 0x80F00000` should end with `## Application terminated, rc = 0x0`
+(`rc = 0x1` means the GOP was not showing the YUV logo and nothing was changed).
+
+Automatic start. The watchdog must be disabled first, otherwise the board
+keeps resetting:
+```
+setenv bootlinux usb start\;fatload usb 0 0x80F00000 logofix.bin\;go 0x80F00000\;fatload usb 0 0x80000000 vmlinux.bin\;go 0x805e86a4\;
+setenv bootcmd mw.w 0xBF006040 0 1\;mw.w 0xBF006010 0 1\;mw.w 0xBF006014 0 1\;run bootlinux\;
+saveenv
+```
+Then reset the power supply. The entry point changes with every kernel
+rebuild (`readelf -h vmlinux | grep Entry`), so update `bootlinux` when you
+replace `vmlinux.bin`.
+
+The stock bootcmd, to restore the original firmware:
+```
+setenv bootcmd spi_rdc 0x80B00000 0x8001C 0x289977\;LzmaDec 0x80B00000 0x289977 0x80000180 0x81000000\;go 0x80000224\;
+saveenv
+```
+
+## Modules
+
+Copy `modules/*.ko` to the rootfs (for example `/root`) and load them after boot:
+```
+insmod /root/i2c-mstar-miic.ko
+insmod /root/mstar-fd650-panel.ko
+```
+
+I2C, reading the MxL5007T tuner ID (expected `0x14`):
+```
+i2ctransfer -y 0 w2@0x60 0xfb 0xd9 r1
+```
+
+Front panel display and keys:
+```
+echo HELO > /sys/devices/platform/1f000000.riu/1f002840.front-panel/text
+cat /dev/input/event0 | hexdump    # keys: KEY_POWER, KEY_CHANNELUP, KEY_CHANNELDOWN
+```
+
+## logofix
+
+Bare-metal MIPS program (about 1 KB), linked at `0x80F00000`. Build:
+```
+cd logofix && sh build.sh
+```
+GOP colour formats found on the board: 1 = RGB565, 2 = ARGB4444,
+9 = YUV 4:2:2 (bytes Y0 V Y1 U, used by the MBoot logo).
 
 ```
 cat /proc/cpuinfo 
