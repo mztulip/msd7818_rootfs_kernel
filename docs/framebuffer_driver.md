@@ -11,7 +11,19 @@ and [`wiwa_hd95_defconfig`](https://github.com/mztulip/linux_msd781x/blob/mstar_
 Test program: [`examples/fbflip.c`](../examples/fbflip.c).
 
 Status: works on the WIWA HD95 (MSD7818). It is part of the `vmlinux.bin`
-in this repository (entry `0x805e87e4`).
+in this repository (entry `0x805e8b04`).
+
+**Update:** steps 9-10 describe the first version (trigger latch, polling
+the ACK bit). Under memory load (fbDOOM) the picture glitched. The cause
+turned out to be the memory arbitration, not the flipping
+([display_flicker_miu.md](display_flicker_miu.md)). The current driver:
+- **flips like MStar GFLIP:** `FBIOPAN_DISPLAY` only records the address;
+  the GOP vsync interrupt (IRQ 20; bank 9 register `0x1F10`: bits `[1:0]`
+  = 2 enable it, bit 8 = vsync flag, cleared by masking and unmasking)
+  writes it with the force-write bit (`0x1FFE` bit 9).
+  `FBIO_WAITFORVSYNC` sleeps on a wait queue instead of polling,
+- **raises the MIU priority** of the GOP (second `reg` range in the DTS,
+  `gopfb_miu_priority()`).
 
 ## 0. Starting point and goal
 

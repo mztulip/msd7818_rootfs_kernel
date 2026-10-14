@@ -14,12 +14,15 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 
 | File | What |
 |---|---|
-| `vmlinux.bin` | kernel 6.7.0-rc6 with appended DTB, entry point **`0x805e87e4`** |
+| `vmlinux.bin` | kernel 6.7.0-rc6 with appended DTB, entry point **`0x805e8b04`** |
 | `logofix/logofix.bin` | MBoot helper that fixes the boot logo colours, run before the kernel (source and `build.sh` next to it) |
 | `modules/i2c-mstar-miic.ko` | hardware I2C (MIIC) driver, bus 0 = MxL5007T tuner at `0x60` |
 | `modules/mstar-fd650-panel.ko` | front panel: POWER / CH+ / CH- keys and the 4-digit display |
 | `rootfs_gcc.7z` | Buildroot rootfs (ext2) with gcc |
 | `docs/framebuffer_driver.md` | how the double buffered framebuffer driver was written, step by step |
+| `docs/display_flicker_miu.md` | why the picture glitched under memory load (fbDOOM) and the MIU priority fix |
+| `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
+| `bin/fbdoom` | fbDOOM with double buffering, fast drawing and serial-console controls (source: https://github.com/mztulip/fbDOOM) |
 | `examples/fbflip.c` | double buffering example and test for `/dev/fb0` (build on the board: `gcc -O2 -o fbflip fbflip.c`) |
 | `bootlogo/` | custom MBoot boot logo: Linux logo, `png2logo.py` (any picture -> logo), flashing guide. See [bootlogo/README.md](bootlogo/README.md) |
 
@@ -32,6 +35,11 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
   No more tearing. Example: `examples/fbflip.c`, full description:
   [docs/framebuffer_driver.md](docs/framebuffer_driver.md). Source:
   [mstar-gopfb.c](https://github.com/mztulip/linux_msd781x/blob/mstar_v6_7_rebase/drivers/video/fbdev/mstar-gopfb.c).
+- **No more glitches under memory load.** Buffers are flipped in the GOP
+  vsync interrupt (like MStar's GFLIP), and the driver gives the GOP
+  priority in the memory arbiter (MIU). Without that, scattered CPU writes
+  (fbDOOM drawing columns) starved the display and HDMI showed shifted
+  lines and garbage. Details: [docs/display_flicker_miu.md](docs/display_flicker_miu.md).
 - **Correct colours, 65536 instead of 4096.** MBoot's `osd_create 1 1` sets
   GOP format 2, which is ARGB4444, not RGB565, and the old kernel converted
   everything to xRGB4444. It also garbled the WIWA boot logo (green
@@ -70,7 +78,7 @@ usb start
 fatload usb 0 0x80F00000 logofix.bin
 go 0x80F00000
 fatload usb 0 0x80000000 vmlinux.bin
-go 0x805e87e4
+go 0x805e8b04
 ```
 `go 0x80F00000` should end with `## Application terminated, rc = 0x0`
 (`rc = 0x1` means the GOP was not showing the YUV logo and nothing was changed).
@@ -78,7 +86,7 @@ go 0x805e87e4
 Automatic start. The watchdog must be disabled first, otherwise the board
 keeps resetting:
 ```
-setenv bootlinux usb start\;fatload usb 0 0x80F00000 logofix.bin\;go 0x80F00000\;fatload usb 0 0x80000000 vmlinux.bin\;go 0x805e87e4\;
+setenv bootlinux usb start\;fatload usb 0 0x80F00000 logofix.bin\;go 0x80F00000\;fatload usb 0 0x80000000 vmlinux.bin\;go 0x805e8b04\;
 setenv bootcmd mw.w 0xBF006040 0 1\;mw.w 0xBF006010 0 1\;mw.w 0xBF006014 0 1\;run bootlinux\;
 saveenv
 ```
