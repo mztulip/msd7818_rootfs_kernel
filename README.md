@@ -19,6 +19,7 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `modules/i2c-mstar-miic.ko` | hardware I2C (MIIC) driver, bus 0 = MxL5007T tuner at `0x60` |
 | `modules/mstar-fd650-panel.ko` | front panel: POWER / CH+ / CH- keys and the 4-digit display |
 | `rootfs_gcc.7z` | Buildroot rootfs (ext2) with gcc |
+| `bootlogo/` | custom MBoot boot logo: Linux logo, `png2logo.py` (any picture -> logo), flashing guide. See [bootlogo/README.md](bootlogo/README.md) |
 
 ## What is new in this kernel
 
