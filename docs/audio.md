@@ -80,7 +80,7 @@ the firmware:
 
 ## Using it
 
-The code is in the reverse engineering workspace (`tools/board/`):
+The code (`tools/board/`):
 
 | File | What |
 |---|---|
@@ -88,10 +88,13 @@ The code is in the reverse engineering workspace (`tools/board/`):
 | `wavplay.c` | WAV player (16-bit PCM, mono or stereo, 8–48 kHz) |
 | `audiotest3.c` | sine generator with register diagnostics |
 
-The DSP code headers (`dsp_fw.h`, `dec03_fw.h`, `se31_fw.h`, `xpcm_fw.h`)
-and the init table (`audio_init_table.h`) are generated from the stock
-firmware image (the LZMA app at flash offset `0x8001C`, decompressed). They
-are not part of any public repo.
+The sources are in this repo under `tools/board/`. The DSP code headers
+(`dsp_fw.h`, `dec03_fw.h`, `se31_fw.h`, `xpcm_fw.h`) and the init table
+(`audio_init_table.h`) are not: generate them from your own flash dump
+(the LZMA app at flash offset `0x8001C`):
+```sh
+python3 tools/board/extract_audio_fw.py wiwa_hd95_BACKUP.BIN tools/board
+```
 
 On the board (it has gcc):
 ```sh
