@@ -4,7 +4,7 @@
 
 - MBoot konfiguruje wyjście HDMI i warstwę graficzną **GOP** (GOP3) już przy wyświetlaniu logo. Linux używa `simple-framebuffer` (sterownik `simpledrm`) na tym samym buforze: `0x82100000`, 1920×1080, RGB565, stride 3840 (`msd7816-test.dts`) ✅.
 - Zamiast `osd_create 1 1` przed startem kernela uruchamiany jest `logofix` (sekcja [Logo WIWA przy starcie](#logo-wiwa-przy-starcie-logofix-)). `osd_create` ustawiał format **ARGB4444**, a nie RGB565, i psuł logo.
-- Od 2026-10-14 jest sterownik `mstar-gopfb` z podwójnym buforowaniem i vsync ([sekcja niżej](#podwójne-buforowanie-sterownik-mstar-gopfb--2026-10-14)). Nie da się jeszcze zmienić rozmiaru obrazu (skalowanie GOP).
+- Od 2026-10-14 jest sterownik `mstar-gopfb` z podwójnym buforowaniem i vsync ([sekcja niżej](#podwójne-buforowanie-sterownik-mstar-gopfb--2026-10-14)). Nie da się jeszcze zmienić rozmiaru obrazu (skalowanie GOP). Pomysł wykorzystania skalowania dla Dooma: [akceleracja_grafiki.md](akceleracja_grafiki.md).
 - W DTS bufor ma zarezerwowane `fb-memory@2100000`, 4 MB. Jedna klatka 1080p RGB565 to 4 147 200 B, czyli prawie całość. Wolny eksperymentalny obszar to `tsukasa@3c00000` (4 MB).
 
 ## Źródło wiedzy

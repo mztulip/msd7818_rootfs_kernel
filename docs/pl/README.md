@@ -20,6 +20,7 @@ Każda informacja ma oznaczenie pewności:
 | Plik | Zawartość |
 |---|---|
 | [firmware_dsp_pochodzenie.md](firmware_dsp_pochodzenie.md) | Skąd pochodzi kod DSP audio (zrzut flasha → LZMA → Ghidra → tabele `pau_info`) i dlaczego go nie publikujemy |
+| [akceleracja_grafiki.md](akceleracja_grafiki.md) | Bloki graficzne w chipie (GE 2D, GOP, JPD, wideo; brak 3D) i pomysły: skalowanie GOP dla Dooma, sterownik GE |
 | [rdzenie_firmware.md](rdzenie_firmware.md) | Przegląd rdzeni w SoC (MIPS, PM51, 8051 demodulatora, DSP audio DEC/SE), ich firmware, co zmieniono we flashu, a co tylko w RAM |
 | [riu.md](riu.md) | Jak liczyć adresy rejestrów (RIU, PM i non-PM, przeliczanie z kodu MStara) |
 | [mxl5007t.md](mxl5007t.md) | Tuner MxL5007T: odczyt/zapis rejestrów krok po kroku (devmem i i2ctransfer), inicjalizacja, strojenie |
