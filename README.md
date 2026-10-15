@@ -29,6 +29,7 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `docs/display_flicker_miu.md` | why the picture glitched under memory load (fbDOOM) and the MIU priority fix |
 | `tools/` | our sources: programs built on the board (`tools/board/`: framebuffer tests, audio library and `wavplay`, demod mailbox, RF scan…), bare-metal MBoot helpers and stock firmware probes (`tools/baremetal/`), serial console scripts, Ghidra scripts. See [Tools](#tools) |
 | `docs/pl/` | the full Polish working notes of the project (registers, I2C, tuner, demodulator, GOP, audio, stock firmware probes, …); index: [docs/pl/README.md](docs/pl/README.md) |
+| `docs/rf_scanner.md` | **rfscan**: RF spectrum analyzer (44–880 MHz) using the box's tuner and demodulator, drawn on the TV; example scans in `docs/rfscan_data/` |
 | `docs/getting_started.md` | step-by-step guide: backup, pendrive, boot, modules, apps, fbDOOM, sound |
 | `docs/audio.md` | sound from Linux: how the two audio DSPs are started and fed (WAV player, fbDOOM sound effects) |
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
@@ -196,7 +197,7 @@ VCEI exceptions      : not available
 
 | Directory | What |
 |---|---|
-| `tools/board/` | C programs built on the board itself (`gcc -O2 -o x x.c`), uploaded over the serial console (`tools/uart_upload.py`): framebuffer and vsync tests (`fbflip`, `gopflip`, `flipcheck`, `bwtest`…), front panel (`frontpanel`), demodulator 8051 mailbox (`dmdmbx`), RF spectrum scan (`rfscan`), register dump (`riudump`), audio (`mstar_audio.h`, `wavplay`, `audiotest3`) |
+| `tools/board/` | C programs built on the board itself (`gcc -O2 -o x x.c`), uploaded over the serial console (`tools/uart_upload.py`): framebuffer and vsync tests (`fbflip`, `gopflip`, `flipcheck`, `bwtest`…), front panel (`frontpanel`), demodulator 8051 mailbox (`dmdmbx`), RF spectrum scan (`rfscan`, see [docs/rf_scanner.md](docs/rf_scanner.md)), register dump (`riudump`), audio (`mstar_audio.h`, `wavplay`, `audiotest3`) |
 | `tools/board/extract_audio_fw.py` | generates the audio DSP firmware headers that `mstar_audio.h` needs (`dsp_fw.h`, `dec03_fw.h`, `se31_fw.h`, `xpcm_fw.h`, `audio_init_table.h`) **from your own flash dump**: `python3 extract_audio_fw.py wiwa_hd95_BACKUP.BIN tools/board` |
 | `tools/baremetal/logofix/` | MBoot helper that fixes the boot logo colours (source of `logofix/logofix.bin`) |
 | `tools/baremetal/stockdump/`, `stockprobe/` | probes that run inside the live stock firmware (loaded from MBoot into RAM, the demo console `Help` patched to jump to them); guide in Polish: [docs/pl/sondy_stock.md](docs/pl/sondy_stock.md) |
