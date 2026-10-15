@@ -21,10 +21,18 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `rootfs_gcc.7z` | Buildroot rootfs (ext2) with gcc |
 | `docs/framebuffer_driver.md` | how the double buffered framebuffer driver was written, step by step |
 | `docs/display_flicker_miu.md` | why the picture glitched under memory load (fbDOOM) and the MIU priority fix |
+| `docs/audio.md` | sound from Linux: how the two audio DSPs are started and fed (WAV player, fbDOOM sound effects) |
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
 | `bin/fbdoom` | fbDOOM with double buffering, fast drawing and serial-console controls (source: https://github.com/mztulip/fbDOOM) |
 | `examples/fbflip.c` | double buffering example and test for `/dev/fb0` (build on the board: `gcc -O2 -o fbflip fbflip.c`) |
 | `bootlogo/` | custom MBoot boot logo: Linux logo, `png2logo.py` (any picture -> logo), flashing guide. See [bootlogo/README.md](bootlogo/README.md) |
+
+## Sound
+
+Sound works from Linux userspace (test tones, WAV files, fbDOOM sound
+effects; HDMI and SCART at the same time) by driving the SoC's two audio
+DSPs with the DSP code of the original firmware. The DSP code is MStar's
+and is not included. See [docs/audio.md](docs/audio.md).
 
 ## What is new in this kernel
 
