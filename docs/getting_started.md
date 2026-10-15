@@ -72,7 +72,7 @@ the pendrive (`root=/dev/sda2 rootwait`), then shows a login prompt on
 both. The first boot waits a while for a network interface (`eth0`); that
 is normal.
 
-**Login: `root`, password `1234`.**
+**Login: `root`, no password.** Set one with `passwd` if the box is on a network.
 
 ## 4. Automatic start (optional)
 

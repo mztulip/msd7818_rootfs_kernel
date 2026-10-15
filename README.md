@@ -2,7 +2,7 @@
 
 **New here? Start with [docs/getting_started.md](docs/getting_started.md)**:
 from an unmodified box to Linux, fbDOOM and sound, step by step.
-Login on the rootfs: `root`, password `1234`.
+Login on the rootfs: `root`, no password (set one with `passwd`).
 
 Kernel source: https://github.com/mztulip/linux_msd781x (branch `mstar_v6_7_rebase`),
 a fork of https://github.com/maniekx86/linux_msd781x/commits/mstar_v6_7_rebase/
@@ -97,7 +97,7 @@ go 0x80F00000
 fatload usb 0 0x80000000 vmlinux.bin
 go 0x805e8b04
 ```
-Log in as `root`, password `1234`.
+Log in as `root` (no password; set one with `passwd`).
 
 `go 0x80F00000` should end with `## Application terminated, rc = 0x0`
 (`rc = 0x1` means the GOP was not showing the YUV logo and nothing was changed).
