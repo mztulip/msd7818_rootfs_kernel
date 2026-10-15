@@ -12,6 +12,7 @@ Dźwięk gra przez DSP SoC-a (DEC dekoduje PCM, SE wysyła na wyjścia), z kodem
 | `wavplay.c` | odtwarzacz WAV (16 bit PCM, mono/stereo, 8–48 kHz) |
 | `audiotest3.c` | generator tonu (sinus) z diagnostyką rejestrów |
 | `audio_init_table.h`, `dsp_fw.h`, `dec03_fw.h`, `se31_fw.h`, `xpcm_fw.h` | tablica inicjalizacji i kod DSP wyciągnięty z firmware'u stocka (nie publikować) |
+| `extract_audio_fw.py` | generuje te pięć nagłówków z własnego zrzutu flasha: `python3 tools/board/extract_audio_fw.py binaries/wiwa_hd95_BACKUP.BIN tools/board` (wynik identyczny bajt w bajt z naszymi) |
 
 Na płytce wszystko leży w `/root` i jest skompilowane (`/root/wavplay`, `/root/audiotest3`).
 
