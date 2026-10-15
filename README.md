@@ -1,3 +1,9 @@
+# Linux on the WIWA HD95 (MStar MSD7818)
+
+**New here? Start with [docs/getting_started.md](docs/getting_started.md)**:
+from an unmodified box to Linux, fbDOOM and sound, step by step.
+Login on the rootfs: `root`, password `1234`.
+
 Kernel source: https://github.com/mztulip/linux_msd781x (branch `mstar_v6_7_rebase`),
 a fork of https://github.com/maniekx86/linux_msd781x/commits/mstar_v6_7_rebase/
 with the WIWA HD95 (MSD7818) changes listed below. Config: `wiwa_hd95_defconfig`.
@@ -23,6 +29,7 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `docs/display_flicker_miu.md` | why the picture glitched under memory load (fbDOOM) and the MIU priority fix |
 | `tools/` | our sources: programs built on the board (`tools/board/`: framebuffer tests, audio library and `wavplay`, demod mailbox, RF scan…), bare-metal MBoot helpers and stock firmware probes (`tools/baremetal/`), serial console scripts, Ghidra scripts. See [Tools](#tools) |
 | `docs/pl/` | the full Polish working notes of the project (registers, I2C, tuner, demodulator, GOP, audio, stock firmware probes, …); index: [docs/pl/README.md](docs/pl/README.md) |
+| `docs/getting_started.md` | step-by-step guide: backup, pendrive, boot, modules, apps, fbDOOM, sound |
 | `docs/audio.md` | sound from Linux: how the two audio DSPs are started and fed (WAV player, fbDOOM sound effects) |
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
 | `bin/fbdoom` | fbDOOM with double buffering, fast drawing and serial-console controls (source: https://github.com/mztulip/fbDOOM) |
@@ -90,6 +97,8 @@ go 0x80F00000
 fatload usb 0 0x80000000 vmlinux.bin
 go 0x805e8b04
 ```
+Log in as `root`, password `1234`.
+
 `go 0x80F00000` should end with `## Application terminated, rc = 0x0`
 (`rc = 0x1` means the GOP was not showing the YUV logo and nothing was changed).
 
