@@ -21,6 +21,8 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `rootfs_gcc.7z` | Buildroot rootfs (ext2) with gcc |
 | `docs/framebuffer_driver.md` | how the double buffered framebuffer driver was written, step by step |
 | `docs/display_flicker_miu.md` | why the picture glitched under memory load (fbDOOM) and the MIU priority fix |
+| `tools/` | our sources: programs built on the board (`tools/board/`: framebuffer tests, audio library and `wavplay`, demod mailbox, RF scan…), bare-metal MBoot helpers and stock firmware probes (`tools/baremetal/`), serial console scripts, Ghidra scripts. See [Tools](#tools) |
+| `docs/pl/` | the full Polish working notes of the project (registers, I2C, tuner, demodulator, GOP, audio, stock firmware probes, …); index: [docs/pl/README.md](docs/pl/README.md) |
 | `docs/audio.md` | sound from Linux: how the two audio DSPs are started and fed (WAV player, fbDOOM sound effects) |
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
 | `bin/fbdoom` | fbDOOM with double buffering, fast drawing and serial-console controls (source: https://github.com/mztulip/fbDOOM) |
@@ -178,3 +180,29 @@ VPE         : 1
 VCED exceptions      : not available
 VCEI exceptions      : not available
 ```
+
+## Tools
+
+`tools/` holds the sources written during the reverse engineering:
+
+| Directory | What |
+|---|---|
+| `tools/board/` | C programs built on the board itself (`gcc -O2 -o x x.c`), uploaded over the serial console (`tools/uart_upload.py`): framebuffer and vsync tests (`fbflip`, `gopflip`, `flipcheck`, `bwtest`…), front panel (`frontpanel`), demodulator 8051 mailbox (`dmdmbx`), RF spectrum scan (`rfscan`), register dump (`riudump`), audio (`mstar_audio.h`, `wavplay`, `audiotest3`) |
+| `tools/board/extract_audio_fw.py` | generates the audio DSP firmware headers that `mstar_audio.h` needs (`dsp_fw.h`, `dec03_fw.h`, `se31_fw.h`, `xpcm_fw.h`, `audio_init_table.h`) **from your own flash dump**: `python3 extract_audio_fw.py wiwa_hd95_BACKUP.BIN tools/board` |
+| `tools/baremetal/logofix/` | MBoot helper that fixes the boot logo colours (source of `logofix/logofix.bin`) |
+| `tools/baremetal/stockdump/`, `stockprobe/` | probes that run inside the live stock firmware (loaded from MBoot into RAM, the demo console `Help` patched to jump to them); guide in Polish: [docs/pl/sondy_stock.md](docs/pl/sondy_stock.md) |
+| `tools/serial/` | Python (pyserial) helpers for the UART console: run commands, catch the MBoot prompt, log in, load a probe into the stock firmware |
+| `tools/ghidra/`, `tools/*.py` | Ghidra scripts (8051 analysis, exports) and BSP function matching (`match_libs.py`) |
+| `tools/bootlogo/` | boot logo generators (v1 Tux, v2 retro) |
+
+Most paths inside the scripts and the Polish notes refer to the original
+working directory layout (`binaries/`, `fbDOOM/`, …), not to this repo.
+
+## License
+
+Our own work in this repository (documentation, `tools/`, `logofix/`,
+`examples/`, boot logo scripts) is under the [MIT license](LICENSE). The
+kernel and modules (GPL-2.0), `bin/fbdoom` (GPL-2.0), the Buildroot rootfs
+(per package licenses) and the Tux images (Larry Ewing) keep their own
+licenses; the details are in [LICENSE](LICENSE). MStar's DSP code is not
+included.
