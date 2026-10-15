@@ -8,7 +8,9 @@ through `/dev/mem` (root).
 This page explains how the audio path works and how it was found. The DSP
 code it needs belongs to MStar and comes from the box's original firmware,
 so it is **not published here**: you have to extract it from your own flash
-dump.
+dump. Where exactly it comes from (flash dump → LZMA app → Ghidra →
+`pau_info` tables) and why it is not published is described in Polish in
+[pl/firmware_dsp_pochodzenie.md](pl/firmware_dsp_pochodzenie.md).
 
 ## The hardware: two DSPs, not a sound card
 
