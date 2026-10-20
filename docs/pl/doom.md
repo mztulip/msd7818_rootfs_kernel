@@ -17,13 +17,13 @@ python3 tools/uart_upload.py fbDOOM/fbdoom/fbdoom_dbl.gz /tmp/fbdoom_dbl.gz
 # na płycie:
 gunzip -c /tmp/fbdoom_dbl.gz > /home/fbdoom_dbl && chmod +x /home/fbdoom_dbl
 ```
-Na płycie w `/home` są też `doom1.wad` i stary `fbdoom`.
+Od 2026-10-19 na płytce (i w `buildroot/overlay/home/`) jest tylko jedna wersja: `/home/fbdoom` z dźwiękiem (budowanie: [dzwiek_uzycie.md](dzwiek_uzycie.md)), obok `doom1.wad`. Stare `doom`, `fbdoom_1`, `fbdoom_dbl` i `fbdoom_snd` zostały usunięte.
 
 ## Uruchomienie
 
 ```sh
 cd /home
-./fbdoom_dbl -iwad doom1.wad
+./fbdoom -iwad doom1.wad
 ```
 Podczas gry konsola wirtualna jest w trybie `KD_GRAPHICS` (`/dev/tty0`), więc konsola tekstowa nie rysuje po ekranie, a przy wyjściu wraca `KD_TEXT`. Ręczne `echo 0 > /sys/class/vtconsole/vtcon1/bind` nie jest już potrzebne. Bez tego przy podwójnym buforze migało: kursor i komunikaty jądra trafiały do bufora 0, a ten jest na ekranie co drugą klatkę. Pomiar `flipcheck` (1000 przełączeń) pokazał, że sam sterownik nie gubi vsync: wszystkie odstępy to ok. 20 ms, a `FBIO_WAITFORVSYNC` czekał 10–20 ms.
 
@@ -71,14 +71,14 @@ Do zwykłej klawiatury USB Doom potrzebuje **terminala wirtualnego** (`/dev/ttyN
 
 `openvt` (BusyBox) uruchamia program na wskazanej konsoli wirtualnej, która staje się jego terminalem sterującym:
 ```sh
-openvt -c 2 -s -w -- sh -c 'cd /home; ./fbdoom_dbl -iwad doom1.wad'
+openvt -c 2 -s -w -- sh -c 'cd /home; ./fbdoom -iwad doom1.wad'
 ```
 - `-c 2`: na konsoli `tty2` (na `tty1` jest już getty z logowaniem);
 - `-s`: przełącz ekran na tę konsolę (jak Ctrl-Alt-F2);
 - `-w`: czekaj na zakończenie programu (bez tego `openvt` od razu wraca);
 - `--`: dalej jest polecenie z argumentami.
 
-Klawiatura USB steruje grą, a konsola szeregowa jest wolna do podglądu, np. `top`. Po wyjściu z gry (Backspace) wróć na pierwszą konsolę: `chvt 1`. Gdyby gra się zawiesiła: `killall fbdoom_dbl; chvt 1`.
+Klawiatura USB steruje grą, a konsola szeregowa jest wolna do podglądu, np. `top`. Po wyjściu z gry (Backspace) wróć na pierwszą konsolę: `chvt 1`. Gdyby gra się zawiesiła: `killall fbdoom; chvt 1`.
 
 Uwaga: wyjście programu (`printf`) idzie wtedy na `tty2`, a nie na serial. Żeby je zobaczyć, przekieruj do pliku: `... > /tmp/doom.log 2>&1`. Plik zapełni się dopiero po wyjściu, bo stdout jest buforowany.
 

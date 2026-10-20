@@ -341,6 +341,25 @@ Uwaga: po programie skompilowanym tuż przed odcięciem zasilania zostaje uszkod
 - Działa (2026-10-15): Doom z dźwiękiem na HDMI i SCART (`fbDOOM/fbdoom/i_mstarsound.c`, commit `cf08a57`). Brak dalszych komunikatów po `I_MStar_InitSound` to nie zawieszenie, tylko normalne zachowanie.
 - Później: sprzętowe MP3 (dekoder DEC 0x07, plan w `docs/dzwiek_uzycie.md`), muzyka w Doomie (OPL), rezerwacja pamięci DSP w DTS.
 
+## Cichy dźwięk na SCART (CRT): zewnętrzne wyciszenie na GPIO44 (2026-10-19, zweryfikowane na płytce) ✅
+
+Objaw: na HDMI dźwięk głośny, na CRT (SCART) bardzo cichy, choć słyszalny, nawet przy głośności TV na maksimum. Oryginał gra ten sam `test1k.wav` na CRT „tak głośno, że ciężko wytrzymać”, a zaraz po jego starcie, zanim cokolwiek zagra, słychać wyraźnie głośniejszy szum i brum. Czyli oryginał włącza coś w torze analogowym.
+
+Przyczyna: **zewnętrzny układ wyciszenia sterowany przez GPIO44** (pad `adc_atop`, rejestr `0x10253C`). MBoot zostawia go w stanie 1 (wyciszone, przez układ przecieka tylko trochę sygnału), oryginał ustawia 0 zaraz przy starcie. Znalezione przez porównanie banków GPIO z działającego oryginału (sonda `tools/baremetal/stockprobe/gpiodump.c`, wynik `binaries/ghidra_stock/stock_gpio_idle.txt`) z Linuksem po zimnym starcie (`tools/board/gpiodump_linux.c`, `linux_gpio_cold_mini.txt`).
+
+| GPIO | Rejestr (bity: 0x20 OEN, 0x10 OUT, 0x01 IN) | MBoot | Oryginał | Funkcja (test na płytce) |
+|---|---|---|---|---|
+| 44 | `0x10253C` | 1 (`0x0011`) | 0 (`0x0000`) | **wyciszenie audio** SCART/analog: 0 = gra, 1 = prawie cisza |
+| 47 | `0x102542` | 0 (`0x0000`) | 1 (`0x0011`) | **SCART pin 16, wybór RGB**: 1 = TV czeka na RGB → czarny obraz, bo wysyłamy CVBS |
+
+Poprawka: `analog_unmute()` w `tools/board/mstar_audio.h` (fbDOOM, `wavplay`) i w `audiotest3.c` ustawia tylko GPIO44 = 0. GPIO47 zostaje 0. Ręcznie: `devmem 0x1F204A78 16 0x0000` (odcisz) / `0x0011` (wycisz).
+
+Co przy okazji wykluczono (testy na słuch z tonem 1 kHz, rejestry zmieniane w trakcie grania, DSP czyta je na bieżąco):
+- Funkcja głośności oryginału (`0x80015944`, MStar `SetAbsoluteVolume`): górny bajt = tłumienie, `0x0C` = 0 dB, krok 1 dB, bity 7:5 dolnego bajtu = 1/8 dB, bit 15 = mute; wskaźnik zmiany w `0x2D22`. Ścieżki: 4/0x38 main `0x2D00/01` (+`0x2D0F`), 0x31–0x34 AUOUT0–3 `0x2D02–0x2D09`, 0x35 I2S `0x2D0A/0B`, 0x37 `0x2D0E/0F`.
+- **`0x2D0F` to głośność HDMI** (−20 dB wyraźnie słychać na monitorze). Main (`0x2D01`) i I2S nie zmieniały HDMI. Wartości oryginału: `0x2D0E` = `0x0900` (+3 dB).
+- Zmiana AUOUT0–3 nie zmieniała CRT przy wyciszonym GPIO44. Pod wyciszeniem trudno to ocenić, więc która AUOUT idzie na SCART, jest dalej niepotwierdzone ❓.
+- Banki audio `0x112A–0x112F` po zimnym starcie Linuksa są takie same jak w oryginale (poza licznikami DSP i `0x112C38–3E`, które zmieniają się też w samym oryginale).
+
 ## Własny program DSP zamiast firmware'u MStara (2026-10-20) ✅
 
 Sprawdzone na płycie, z pomiarem mikrofonem komputera (szczegóły i przebieg: `dsp_re/README.md`, sekcja „Sesja 2026-10-20 (trzecia)”).

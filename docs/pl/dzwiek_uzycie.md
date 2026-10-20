@@ -38,6 +38,8 @@ sync                          # ext2 bez dziennika: bez sync binarka po wyłącz
 ```
 Uwaga: nie uruchamiaj `uart_upload.py` w powłoce z PATH SDK Buildroota (`~/toolchains/mipsel/...`), bo jego `python3` nie ma pyserial.
 
+Wyjście SCART/analog jest po starcie wyciszone przez GPIO44 (zostawia tak MBoot). `mstar_audio.h` i `audiotest3` same je odciszają (`analog_unmute()`), szczegóły w [audio.md](audio.md).
+
 ## Ton testowy
 
 ```sh
@@ -72,16 +74,16 @@ Budowanie (na PC, w czystej powłoce, żeby PATH SDK nie przesłonił Pythona z 
 ```sh
 cd fbDOOM/fbdoom
 (export PATH=~/toolchains/mipsel/mipsel-buildroot-linux-gnu/bin:$PATH
- make NOSDL=1 MSTAR_SOUND=1                  # bierze mstar_audio.h i nagłówki DSP z ../../tools/board
- mipsel-buildroot-linux-gnu-strip -o fbdoom_snd fbdoom)
+ make clean; make NOSDL=1 MSTAR_SOUND=1      # clean konieczny: Makefile nie przebudowuje po zmianie flag (inaczej i_sound.o bez dźwięku); bierze mstar_audio.h i nagłówki DSP z ../../tools/board
+ mipsel-buildroot-linux-gnu-strip -o fbdoom_snd fbdoom)    # na płytce jako /home/fbdoom (jedyna wersja)
 gzip -9 -k fbdoom_snd
-python3 ../../tools/uart_upload.py fbdoom_snd.gz /home/fbdoom_snd.gz
+python3 ../../tools/uart_upload.py fbdoom_snd.gz /home/fbdoom.gz
 ```
 Na płytce:
 ```sh
-cd /home && gunzip -f fbdoom_snd.gz && chmod +x fbdoom_snd && sync
-./fbdoom_snd -iwad doom1.wad                 # z konsoli szeregowej (picocom)
-openvt -c 2 -s -w -- sh -c 'cd /home; ./fbdoom_snd -iwad doom1.wad'    # z klawiaturą USB
+cd /home && gunzip -f fbdoom.gz && chmod +x fbdoom && sync
+./fbdoom -iwad doom1.wad                 # z konsoli szeregowej (picocom)
+openvt -c 2 -s -w -- sh -c 'cd /home; ./fbdoom -iwad doom1.wad'    # z klawiaturą USB
 ```
 `-nosound` albo `-nosfx` wyłącza dźwięk. Start trwa kilka sekund dłużej, bo ładuje kod do obu DSP. Po `I_MStar_InitSound: starting the DSPs` gra nie wypisuje już nic więcej, i tak ma być.
 

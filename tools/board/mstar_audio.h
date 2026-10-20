@@ -262,6 +262,20 @@ static void hdmi_audio_on(void)
 	H33(6) = 0x2100;			/* value seen while the stock player runs */
 }
 
+/*
+ * Analog (SCART/RCA) audio mute on the WIWA HD95 board: adc_atop pad GPIO44
+ * drives the external mute circuit. MBoot leaves it at 1 (muted, only a quiet
+ * leak gets through); the stock firmware sets it to 0 at start-up. GPIO47
+ * next to it is the SCART RGB select (pin 16): stock sets it to 1 because it
+ * outputs RGB; we output CVBS, so it must stay 0 or the TV shows a black
+ * picture (both verified on the board, docs/audio.md).
+ * Pad register bits: 0x20 OEN (0 = output), 0x10 OUT, 0x01 IN.
+ */
+static void analog_unmute(void)
+{
+	wm16(0x10253c, 0x30, 0x00);		/* GPIO44: output, low = unmuted */
+}
+
 static double now(void)
 {
 	struct timespec t;
@@ -416,6 +430,7 @@ static int maudio_open(unsigned rate, unsigned channels)
 	for (unsigned i = 0; i < sizeof(stock_out) / sizeof(stock_out[0]); i++)
 		w16(stock_out[i].reg, stock_out[i].val);
 	hdmi_audio_on();
+	analog_unmute();
 	memset((void *)dram(DEC_BASE), 0, ES_SIZE);
 	wm8(A(0x2c60), 7, 0);
 	set_deccmd(4);				/* PLAYFILE */

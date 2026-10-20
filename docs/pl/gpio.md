@@ -28,3 +28,14 @@ Odczytane wpisy:
 | 20 | `0x1423`/08 | `0x1424`/08 | `0x1425`/08 | pin SAR 3 |
 
 Dekodowanie całej tablicy: `objcopy -O binary --only-section=.rodata.gpio_table halGPIO.o gpio_table.bin`, potem `struct.unpack('<IB3xIB3xIB3x', entry)`. Piny SAR jako GPIO wymagają wyzerowania bitu w `0x1422` (tryb cyfrowy). Szczegóły panelu: [przyciski_sar.md](przyciski_sar.md).
+
+## Znane funkcje pinów (2026-10-19, zweryfikowane na płytce) ✅
+
+Wpisy `adc_atop` w `gpio_table` (GPIO 22–87) mają jeden rejestr 16-bit na pin: `0x20` OEN (0 = wyjście), `0x10` OUT, `0x01` IN. CPU: `0xBF000000 + reg·2`, z Linuksa `devmem 0x1F000000+reg·2 16`.
+
+| GPIO | Rejestr | Funkcja | Stan |
+|---|---|---|---|
+| 44 | `0x10253C` | wyciszenie wyjścia audio SCART/analog | 0 = dźwięk, 1 = wyciszony (stan po MBoocie) |
+| 47 | `0x102542` | SCART pin 16 (RGB / fast blanking) | 0 = CVBS (zostawiamy), 1 = RGB (oryginał) |
+
+Szczegóły i sposób znalezienia: [audio.md](audio.md) (sekcja o cichym SCART). Pozostałe różnice między oryginałem a Linuksem w bankach GPIO: tryb SAR (`0x1400`, `0x142E`), PM `0x0E1C` bit 9, chiptop `0x101E22/38/3A/3E` (mux padów) — funkcja nieznana ❓.

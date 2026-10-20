@@ -80,6 +80,21 @@ the firmware:
   samples that had not been played yet. Pacing the writer to real time plus
   a small lead fixed it.
 
+## Quiet SCART audio: an external mute on GPIO44
+
+HDMI was loud, but the CRT on SCART was barely audible even at full TV volume. The stock firmware plays the same file painfully loud there, and right after it boots the hiss and hum on the SCART output get much louder before anything plays. That points at the analog side, not at a gain register.
+
+Dumping the GPIO banks from the running stock firmware (`tools/baremetal/stockprobe/gpiodump.c`) and from Linux after a cold boot (`tools/board/gpiodump_linux.c`) showed two `adc_atop` pad GPIOs set the other way round. Toggling them one by one while a tone played settled what they do:
+
+| GPIO | Register | After MBoot | Stock | Function |
+|---|---|---|---|---|
+| 44 | `0x10253C` | 1 | 0 | analog audio mute: 1 = muted (only a faint leak), 0 = sound |
+| 47 | `0x102542` | 0 | 1 | SCART pin 16, RGB select: 1 makes the TV expect RGB, so with our CVBS output the picture goes black |
+
+`analog_unmute()` in `mstar_audio.h` (and `audiotest3.c`) now drives GPIO44 low and leaves GPIO47 alone. By hand: `devmem 0x1F204A78 16 0x0000` unmutes, `0x0011` mutes again. Pad register bits: `0x20` output enable (0 = output), `0x10` output level, `0x01` input level.
+
+Side results: the stock volume function (`SetAbsoluteVolume`) keeps one register pair per path; `0x2D0F` is the HDMI volume (high byte = attenuation, `0x0C` = 0 dB, 1 dB steps), and it can be changed while sound plays.
+
 ## Using it
 
 The code (`tools/board/`):
