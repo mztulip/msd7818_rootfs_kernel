@@ -190,7 +190,20 @@ i2c-0   i2c   1f206800.miic   I2C adapter
 ```
 Pinmux po starcie = `0x0001` (ustawiony przez sterownik). Przykłady użycia tunera: [mxl5007t.md](mxl5007t.md).
 
-## ⚠️ Drganie obrazu HDMI przy sterowniku wbudowanym w kernel → używać modułów (2026-10-13)
+## ✅ Rozwiązane 2026-10-18: sterowniki znów wbudowane (kernel #13)
+
+Drganie opisane niżej było **niedoborem danych w GOP** (brak priorytetu MIU dla grupy 1), a nie skutkiem działania sterowników. Wbudowany sterownik zmieniał tylko rozkład jądra i przebieg startu, a to wystarczało, żeby GOP bez priorytetu nie nadążał. Poprawka MIU w `mstar-gopfb` ([miganie_obrazu_miu.md](miganie_obrazu_miu.md)) usuwa przyczynę.
+
+Test na płycie: kernel #13 (`vmlinux_builtin.bin`, `CONFIG_I2C_MSTAR_MIIC=y`, `CONFIG_KEYBOARD_MSTAR_FD650=y`, `.config.builtin`, punkt wejścia **`0x805e9be4`**, MD5 `450502fa…`):
+- obraz HDMI stabilny (ocena wzrokowa) ✅;
+- `i2c-0`/`i2c-1` są, tuner odpowiada `0x14` ✅;
+- przyciski panelu dają zdarzenia w `/dev/input/event0`: POWER `0x74`, CH+ `0x192`, CH− `0x193` ✅. Uwaga: `hexdump /dev/input/event0` buforuje wyjście i nic nie pokazuje; zapisywać `cat /dev/input/event0 > /tmp/ev &` i oglądać plik.
+
+Od 2026-10-18 to kernel domyślny: `vmlinux.bin` = `vmlinux_builtin.bin`, `bootlinux` kończy się na `go 0x805e9be4` (`saveenv`, sprawdzony `reset`). Poprzedni (#10, `vmlinux_gopmiu.bin`, `go 0x805e8b04`) zostaje na FAT. `wiwa_hd95_defconfig` ma oba sterowniki `=y`. `CONFIG_MODULES=y` zostało (kod obsługi modułów to ok. 28 KB).
+
+Jednorazowo w trakcie testu przycisków pendrive z rootfs się odłączył (`usb 1-1: USB disconnect`, rootfs `EXT4 … error -5`, potrzebny restart zasilania). Przy kolejnych testach już nie ❓, najpewniej poruszenie pendrive'a. Jądro nie ma `CONFIG_MAGIC_SYSRQ`, więc przy martwym rootfs nie da się zrestartować płyty z konsoli.
+
+## Historia: drganie obrazu HDMI przy sterowniku wbudowanym w kernel → moduły (2026-10-13)
 
 Objaw: z `i2c-mstar-miic` **wbudowanym** w kernel (`=y`) obraz HDMI (konsola „Welcome to Buildroot”) drga. Diagnostyka (bisekcja, każdy test oceniany wzrokowo na monitorze):
 

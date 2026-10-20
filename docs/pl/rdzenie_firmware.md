@@ -20,7 +20,7 @@ W dokumentach pojawia się „DSP demodulatora”, ale to **sprzętowy łańcuch
 
 ### Inne bloki, które mogą mieć własny rdzeń ❓
 
-W wielu układach MStara dekoder wideo (MVD) ma własny mały procesor z firmware'em. W tym chipie tego nie sprawdzaliśmy. Pamięć MVD (`0x1D00000–0x3A00000` w oryginale) wykorzystujemy na sondy (`0xA3800000`), bo przy samym menu i audio jest wolna.
+W wielu układach MStara dekoder wideo (MVD) ma własny mały procesor z firmware'em. W tym chipie potwierdzają to napisy w aplikacji eCos (`extractions/.../8001C/decompressed.bin`, 2026-10-20) 🔍: jest rdzeń **VPU** (`VPU_Mutex`, `VPU on MIU 0/1`, `MVD: VPU reset failed!`), do którego aplikacja ładuje firmware (`HAL_MVD_LoadCode u32fwAddr=%lx`, `HVD firmware version binary`, `JPD Firmware load code address … 2048 byte alignment`). Ten sam VPU obsługuje dekodery MVD (MPEG-1/2, MPEG-4, DivX 3.11/4.12, H.263, VC-1), HVD (H.264, MJPEG) i JPD (JPEG, `HAL_JPD_InitVPU`). Bloków firmware'u VPU jeszcze nie wycięliśmy i nie wiemy, jakiej architektury jest ten rdzeń ❓. Pamięć MVD (`0x1D00000–0x3A00000` w oryginale) wykorzystujemy na sondy (`0xA3800000`), bo przy samym menu i audio jest wolna.
 
 ## Ile jest firmware'ów
 
