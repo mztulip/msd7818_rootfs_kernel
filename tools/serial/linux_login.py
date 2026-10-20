@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Optionally send a command (default none), wait for the Linux login and log in as root.
+"""Optionally send a command (default none), wait for the Linux login and log in as root
+(or accept the shell of the auto-logged-in root of the flash mini system).
 
 Usage: linux_login.py ["go 0x805e86a4"]
 """
@@ -16,6 +17,8 @@ with serial.Serial("/dev/ttyUSB0", 115200, timeout=0.2) as s:
     while time.time() < end:
         buf += s.read(4096)
         tail = buf[-300:]
+        if state == "boot" and b"root login on" in buf and tail.rstrip().endswith(b"#"):
+            state = "done"; break		# autologin of the flash mini system (since 2026-10-20)
         if state in ("boot", "pass") and b"login:" in tail:
             if not passwords:
                 break

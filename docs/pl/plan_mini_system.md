@@ -33,7 +33,7 @@ włączenie zasilania
        ├─ LzmaDec  → rozpakowanie kernela pod 0x80000000
        └─ go 0x80000000
             └─ Linux: sterownik ISP + spi-nor widzi flash jako partycje MTD
-                 └─ root = /dev/mtdblock4 (squashfs, tylko odczyt) → BusyBox init → login na UART i na ekranie
+                 └─ root = /dev/mtdblock4 (squashfs, tylko odczyt) → BusyBox init → root zalogowany sam na UART i na ekranie
 ```
 
 To te same polecenia, którymi MBoot uruchamia dziś oryginał (`spi_rdc` + `LzmaDec` + `go`), więc w MBoocie nic nie trzeba zmieniać poza zmienną `bootcmd`.
@@ -81,14 +81,17 @@ Osobna konfiguracja Buildroota, budowana do `rootfs_mini/output` (główny Build
 
 **Zawartość:**
 - BusyBox, statycznie z musl (1,2 MB przed kompresją);
-- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem (581 KB), i `/home/doom1.wad`; polecenie `doom` uruchamia grę;
-- getty na konsoli szeregowej i na ekranie (`tty1`), login `root` / `1234`;
+- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem przez **nasz własny program DSP** (`OWN_SOUND=1`, `own_audio.h`, bez kodu MStara; 494 KB; od 2026-10-20, wcześniej 581 KB z kodem DSP MStara), dźwięk tylko na HDMI;
+- `/home/freedoom_e1m1.wad`: okrojony Freedoom (jedna mapa E1M1, BSD-3, `tools/doom/mkminiwad.py`) z `FREEDOOM_COPYING.txt` i plikami `FREEDOOM_CREDITS*.txt` obok (wymóg licencji); do 2026-10-20 był tu `doom1.wad`; polecenie `doom` uruchamia grę;
+- **root bez hasła, logowany automatycznie** na konsoli szeregowej i na ekranie (`tty1`), od 2026-10-20 (niżej: „Logowanie”);
 - `/tmp` i `/run` w RAM (tmpfs), reszta tylko do odczytu;
 - `S20usb`: montuje pierwszą partycję FAT pendrive'a pod `/mnt/usb`, jeśli jest.
 
-**Rozmiar obrazu:** 2 064 384 B (squashfs, XZ, blok 1 MB). Największy jest `doom1.wad` (4,2 MB, po kompresji ok. 1,37 MB). Blok 1 MB zamiast domyślnych 128 KB oszczędza ok. 50 KB. `post_build.sh` usuwa `lib/libc.a` (3,2 MB, Buildroot kopiuje go przy statycznym musl), skrypty sieci, crona i `seedrng`.
+**Rozmiar obrazu:** 2 011 136 B (od 2026-10-20; wcześniej 2 064 384 B; squashfs, XZ, blok 1 MB, partycja ma 2 097 152 B). Największy jest WAD (`freedoom_e1m1.wad` 4,1 MB, po kompresji ok. 1,32 MB; dawny `doom1.wad` 4,2 MB / 1,37 MB). Blok 1 MB zamiast domyślnych 128 KB oszczędza ok. 50 KB. `post_build.sh` usuwa `lib/libc.a` (3,2 MB, Buildroot kopiuje go przy statycznym musl), skrypty sieci, crona i `seedrng`.
 
-⚠️ **Obraz rootfs i `rootfs_mini/overlay/home/fbdoom` zawierają kod DSP MStara** (fbDOOM z dźwiękiem). Nie wolno ich publikować.
+Od 2026-10-20 **obraz nie zawiera kodu MStara**: fbDOOM gra przez nasz program DSP, a WAD to Freedoom (BSD-3, notka licencji w `/home`). Dawny obraz (z kodem DSP MStara i `doom1.wad`) i jego pliki leżą w `rootfs_mini/old_overlay_mstar/`; tych nie wolno publikować.
+
+**Logowanie (od 2026-10-20).** `BR2_TARGET_GENERIC_ROOT_PASSWD=""` w `rootfs_mini/wiwa_mini_defconfig` daje w `/etc/shadow` `root::` (brak hasła). W `overlay/etc/inittab` getty na `console` i `tty1` ma `-n -l /usr/bin/autologin` (bez pytania o nazwę, zamiast `/bin/login` uruchamia skrypt), a `overlay/usr/bin/autologin` robi `exec /bin/login -f root` (zalogowany bez pytania). Po starcie od razu jest powłoka `#`, w logu `login[..]: root login on 'console'` i `'tty1'`. Po wylogowaniu (`exit`) init uruchamia getty od nowa i root loguje się znowu. `tools/serial/linux_login.py` rozpoznaje autologowanie (komunikat `root login on` i znak `#`); w systemie z pendrive'a dalej loguje się normalnie (login i hasło).
 
 ## Test bez zapisu do flasha (zrobione 2026-10-19)
 
@@ -112,6 +115,8 @@ bootcmd   = run wdoff;usb start;run flashlogo;run flashboot;
 bootlinux = (bez zmian) start systemu z pendrive'a: Enter przy starcie, potem  run wdoff; run bootlinux
 ```
 Przy nowym kernelu zmienia się tylko `flashboot` (rozmiar w `LzmaDec`). `usb start` w `bootcmd` jest konieczne: kernel sam nie włącza PHY USB (węzeł PHY w DTS jest wyłączony) i bez inicjalizacji przez MBoot port jest martwy (w `dmesg` nic przy wkładaniu pendrive'a); dodane 2026-10-19. Bez pendrive'a `usb start` tylko zgłasza błąd i start idzie dalej. Rootfs od 2026-10-19 wieczorem: napis `MSD7818 mini Linux`, host `msd7818`, `S20usb` montuje pendrive w tle (do 15 s).
+
+**Aktualizacja rootfs 2026-10-20** (nasz dźwięk, Freedoom, root bez hasła z autologowaniem): nowy obraz najpierw sprawdzony z pendrive'a (`dd` na `sda3`, start `vmlinux_sqtest.bin`: autologowanie, gra bez błędów, ton testowy `owntest` na HDMI), potem w MBoocie `fatload usb 0 0x80C00000 rootfs.img`, `spi_wrc 0x80C00000 0x1E0000 0x200000` (`Verifying...OK`), `spi_rdc 0x81000000 0x1E0000 0x200000`, `cmp.l 0x80C00000 0x81000000 80000` (524 288 słów zgodnych), `reset`: `CRC check success`, rootfs z `mtdblock4`, root zalogowany sam. Kernel, logofix i środowisko bez zmian. Pierwsza wersja WAD-u nie miała płaszczyzny `FLOOR7_2` (tło ramki widoku) i gra kończyła się błędem; poprawione w `mkminiwad.py` przed zapisem. Uwaga z tej sesji: pendrive przełożony z PC do płytki czasem nie wstaje przy pierwszym starcie (`error -71` w `dmesg`, potem urządzenie `FC 3281B` bez nośnika); pomaga kolejny restart płytki z pendrive'em w gnieździe.
 
 Poniżej opis przygotowania (stan sprzed zapisu).
 
@@ -144,7 +149,7 @@ Test z RAM: `fatload usb 0 0x80B00000 kernel.lzma`, `LzmaDec 0x80B00000 0x1285DA
 |---|---|---|---|
 | `kernel.img` | `0x130000` | `0x80000` | `kernel.lzma` 1 213 914 B (`0x1285DA`), kernel #4 z `root=/dev/mtdblock4` |
 | `logofix.img` | `0x10000` | `0x1D0000` | `logofix.bin` 1008 B |
-| `rootfs.img` | `0x200000` | `0x1E0000` | `rootfs.squashfs` 2 064 384 B (**kod MStara, nie publikować**) |
+| `rootfs.img` | `0x200000` | `0x1E0000` | `rootfs.squashfs` 2 064 384 B (wersja z 2026-10-19: **kod MStara, nie publikować**; od 2026-10-20 2 011 136 B bez kodu MStara, `flash_images/rootfs_20261020.img`) |
 
 ### Kroki
 

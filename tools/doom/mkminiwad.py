@@ -18,8 +18,8 @@ Kept:
   - only the wall textures (TEXTURE1/2 entries and patches) those maps use,
     plus the episode-1 switch textures (P_InitSwitchList needs them) and
     complete animation ranges (p_spec.c animdefs) that touch a used texture;
-  - only the used flats, plus F_SKY1, the E1 finale flat and whole animated
-    flat ranges;
+  - only the used flats, plus F_SKY1, the E1 finale flat, the view border flat
+    FLOOR7_2 (r_draw.c) and whole animated flat ranges;
   - all sprites except the monsters that do not appear on the chosen maps
     (and their projectiles), and except sprites the engine never uses;
   - all sound effects, resampled to 11025 Hz (the original Doom rate; many
@@ -157,7 +157,7 @@ def main():
             drop_spr |= set(spr)
             drop_sfx |= set(sfx)
     walls |= {"SKY1"} | {"SW1" + s for s in SWITCHES_E1} | {"SW2" + s for s in SWITCHES_E1}
-    flats |= {"F_SKY1", "FLOOR4_8"}
+    flats |= {"F_SKY1", "FLOOR4_8", "FLOOR7_2"}	# FLOOR7_2: view border (r_draw.c), needed always
 
     # textures: keep the first (dummy) entry, used ones, whole animation ranges
     pnames = dict(lumps)["PNAMES"]

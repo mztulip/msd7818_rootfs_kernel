@@ -34,12 +34,12 @@ Warunki licencji przy rozpowszechnianiu (np. WAD w obrazie rootfs albo w publicz
 
 - wybrane mapy E1M1…E1Mn i ich muzykę; bez E3M1/E4M1 silnik uznaje WAD za **shareware** (w menu tylko epizod 1, lista przełączników z epizodu 1);
 - tylko tekstury ścian użyte na mapach (wpisy `TEXTURE1/2` + łatki), przełączniki epizodu 1 (`P_InitSwitchList` wymaga ich wszystkich) i całe zakresy animacji z `animdefs` (`p_spec.c`), jeśli choć jedna klatka jest użyta;
-- tylko użyte płaszczyzny + `F_SKY1`, `FLOOR4_8` (tło końca E1) i całe animowane zakresy;
+- tylko użyte płaszczyzny + `F_SKY1`, `FLOOR4_8` (tło końca E1), `FLOOR7_2` (tło ramki wokół widoku, `r_draw.c`; bez niej gra kończy się błędem `W_GetNumForName: FLOOR7_2 not found!` przy zmniejszonym widoku, sprawdzone na płytce 2026-10-20) i całe animowane zakresy;
 - sprite'y bez potworów nieobecnych na mapach (dla E1M1–E1M5: bez Lost Soul, Cacodemona, Barona, Cyberdemona, Spider Mastermind i ich pocisków) i bez nieużywanych zestawów (`PLYC`, `MANF`, `BOSF`). Bronie zostają wszystkie, bo `IDKFA` je daje, a brak sprite'u broni kończy się błędem;
 - wszystkie dźwięki przepróbkowane do 11 025 Hz (jak w oryginalnym Doomie; Freedoom ma wiele w 22/44 kHz, mikser `i_mstarsound.c` przyjmuje każdą częstotliwość). Dźwięki usuniętych potworów zastąpione krótką ciszą (brak lumpu dźwięku = błąd przy odtworzeniu);
 - `DEMO1..3` zastąpione pustymi demami dla E1M1 (oryginalne grają mapy, których nie ma); bez ekranów E2/E3 (`WIMAP1/2`, `WIA1*`, `WIA2*`, `VICTORY2`, `ENDPIC`, `PFUB*`, `BOSSBACK`, `INTERPIC`, `END0..6`) i dźwięków PC speakera (`DP*`).
 
-Sprawdzone na PC: każda tekstura z mapy jest w `TEXTURE1`, każda łatka tych tekstur i każda płaszczyzna są w pliku. **Na płytce jeszcze nieuruchomione.**
+Sprawdzone na PC: każda tekstura z mapy jest w `TEXTURE1`, każda łatka tych tekstur i każda płaszczyzna są w pliku. **Na płytce (2026-10-20):** działa w systemie z flasha (polecenie `doom`) po dodaniu `FLOOR7_2`; sprawdzony start i ekran tytułowy, przejścia E1M1 do końca nikt jeszcze nie grał.
 
 ## Zmiana w fbDOOM
 
