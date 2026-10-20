@@ -239,3 +239,20 @@ saveenv
 Sprawdzone: po resecie logo jest poprawne przez cały start, Linux ma GOP3 = `0x3F11`, a tekst konsoli w pamięci ma kolor `0xAD55` (szary RGB565; stary kernel dawał `0x0AAA`).
 
 Test pasami (MBoot, format 1): `mw.w 0xA2100000 f800 65400` (czerwony, 216 linii), kolejne pasy co `0xCA800` bajtów.
+
+## Pomysł: dwa niezależne obrazy, HDMI i SCART (2026-10-19, niezbadane) ❓
+
+Teraz jest jeden bufor (GOP3, 1920×1080 RGB565, `0x2100000`). Idzie przez skaler (XC) na HDMI, a enkoder wideo VE (CVBS na SCART) dostaje ten sam obraz zmniejszony do 576i, więc oba ekrany pokazują to samo.
+
+Przesłanki, że sprzęt umie więcej 🔍:
+- 4 niezależne warstwy GOP0–GOP3 (własne okna, adres, format) i blok MIXER (bank `0xD`).
+- `libapiGOP.a` z BSP K1 (`mstar-mboot-master/MstarCore/bsp/k1/lib/`, z symbolami) ma kierowanie warstwy prosto do VE, z pominięciem skalera: `HAL_GOP_SetGOPToVE`, `HAL_GOP_VE_SetOutputTiming`, `HAL_GOP_SetMixerDst`, `HAL_GOP_MIXER_SetMux`, `MApi_GOP_GWIN_SetGOPDst`; w `apiGOP.h` cele `E_GOP_DST_VE` i `E_GOP_DST_MIXER2VE` obok `E_GOP_DST_OP0` (droga przez skaler na HDMI). Jest też `libdrvVE.a`.
+
+Pomysł: GOP3 dalej na HDMI (1080p), a druga warstwa (GOP0/GOP1, własny bufor np. 720×576) prosto do VE na SCART. Dałoby to dwa niezależne obrazy, np. Doom na HDMI i konsola albo `rfscan` na CRT.
+
+Niewiadome: czy VE na Kronusie da się przełączyć na źródło „mixer/GOP” zamiast skalera i które to rejestry; czy HDMI zostaje wtedy nietknięte; jak obsłużyć przeplot 576i (pola).
+
+Plan, gdyby się tym zająć:
+1. Zdeasemblować z `halGOP.o` (`ar x libapiGOP.a`) `HAL_GOP_SetGOPToVE`, `HAL_GOP_SetMixerDst`, `HAL_GOP_VE_SetOutputTiming`, `HAL_GOP_MIXER_SetMux`: jakie rejestry i wartości.
+2. Pod Linuksem przez `/dev/mem`: drugi bufor 720×576, GOP0 na niego, cel na VE; sprawdzić na CRT i HDMI.
+3. Jeśli działa: drugi `/dev/fb1` w `mstar-gopfb`.

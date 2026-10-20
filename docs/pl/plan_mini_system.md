@@ -1,48 +1,174 @@
-# Plan: mini system Linux w flashu SPI (z fbDOOM)
+# Mini system Linux we flashu SPI (z fbDOOM)
 
-Ustalony 2026-10-14, **jeszcze nie rozpoczęty** (najpierw zajmujemy się dźwiękiem, [audio.md](audio.md)).
+## O co chodzi
 
-## Cel
+Dekoder ma flash SPI 4 MB. Dziś jest w nim MBoot (bootloader) i oryginalne oprogramowanie (eCos), a Linux startuje z pendrive'a. Cel: zmieścić **cały mały Linux we flashu**, zamiast oryginału, tak żeby dekoder bez pendrive'a startował prosto do Linuksa i dało się w nim zagrać w Dooma z dźwiękiem (wystarczy podłączyć klawiaturę USB).
 
-- Kernel i rootfs we flashu SPI (4 MB), zamiast oryginalnego systemu (eCos). Oryginał można usunąć, bo pełna kopia flasha jest w `binaries/wiwa_hd95_BACKUP.BIN`.
-- Rootfs tylko do odczytu: zmiany działają do restartu.
-- Pełniejszy rootfs i programy na pendrivie: wgrywam proste skompilowane programy na pendrive i je uruchamiam.
-- Jeśli się da: mała zapisywalna część na `/home`.
-- fbDOOM z `doom1.wad` w flashu: wystarczy podpiąć klawiaturę USB i grać.
-- Kernel na osobnej gałęzi `kernel_mini`: bez modułów, bez sieci; zostają konsola szeregowa, USB (pendrive i klawiatura) i framebuffer. Usunięcie kodu źródłowego niezwiązanego z platformą (inne architektury, sterowniki, których nigdy nie użyjemy).
+Założenia (ustalone 2026-10-14, uzupełnione 2026-10-19):
+- **System plików tylko do odczytu** (squashfs we flashu). Zmiany w plikach trwają do restartu, po restarcie zawsze jest czysty system.
+- **Pendrive jako dodatek**: jeśli jest włożony, montuje się sam pod `/mnt/usb`, a z niego można uruchamiać własne programy.
+- Później, opcjonalnie: mała zapisywalna partycja `/home` (JFFS2).
+- Oryginalny firmware można skasować, bo pełna kopia flasha jest w `binaries/wiwa_hd95_BACKUP.BIN` (i dzisiejsza, z nowym logo, w `flash_20261019.bin` na pendrivie).
 
-## Budżet miejsca (zmierzone / szacowane)
+## Stan (2026-10-19)
 
-Wolne po usunięciu oryginalnego systemu: `0x80000–0x3E0000` = **3,37 MB** (zostają: sboot + MBoot `0x0–0x70000`, logo `0x70000–0x80000`, środowisko MBoota `0x3E0000–0x400000`).
+| Etap | Stan |
+|---|---|
+| 1. Mały kernel (`kernel_mini`) | ✅ działa, 1,2 MB po kompresji |
+| 2. Odczyt flasha w Linuksie | ✅ cały flash widoczny jako MTD |
+| 3. Sterownik zapisu flasha (ISP) | ✅ działa, opis: [flash_spi.md](flash_spi.md) |
+| 4. Rootfs squashfs (BusyBox + fbDOOM + WAD) | ✅ 1,97 MB, przetestowany z pendrive'a: Doom z obrazem i dźwiękiem na HDMI i SCART |
+| 5. Zapis kernela i rootfs do flasha, start bez pendrive'a | ✅ **zrobione 2026-10-19**: płytka startuje z flasha, ok. 10 s od resetu do loginu |
+| 6. Zapisywalne `/home` (JFFS2) | — później |
 
-| Element | Teraz | Cel |
-|---|---|---|
-| kernel LZMA | 2,87 MB (pełna konfiguracja) | ok. 1,0–1,3 MB |
-| BusyBox + biblioteki (statycznie, musl) | — | ok. 0,2 MB |
-| fbdoom (xz) | 0,16 MB (dynamiczny, glibc + `libSDL`) | ok. 0,2 MB (statyczny, `NOSDL`) |
-| doom1.wad (xz) | 4,2 MB → 1,36 MB | 1,36 MB |
-| zapisywalne `/home` (JFFS2) | — | 128–256 KB |
-| **Razem** | | **ok. 3,0–3,3 MB** |
+## Jak będzie startował
 
-## Budowa
+```
+włączenie zasilania
+  └─ sboot + MBoot (we flashu, bez zmian)
+       ├─ wyświetla logo z flasha (0x70000)
+       ├─ wyłącza watchdoga (mw.w … jak dziś)
+       ├─ spi_rdc  → logofix z flasha (0x1D0000) do RAM, go 0x80F00000   (logo YUV → RGB565)
+       ├─ spi_rdc  → kernel LZMA z flasha (0x80000) do RAM
+       ├─ LzmaDec  → rozpakowanie kernela pod 0x80000000
+       └─ go 0x80000000
+            └─ Linux: sterownik ISP + spi-nor widzi flash jako partycje MTD
+                 └─ root = /dev/mtdblock4 (squashfs, tylko odczyt) → BusyBox init → login na UART i na ekranie
+```
 
-1. **Jeden obraz: kernel + initramfs (cpio), kompresja LZMA.** MBoot ładuje go poleceniami, które już ma (oryginalny `bootcmd` robi to samo):
+To te same polecenia, którymi MBoot uruchamia dziś oryginał (`spi_rdc` + `LzmaDec` + `go`), więc w MBoocie nic nie trzeba zmieniać poza zmienną `bootcmd`.
+
+## Układ flasha
+
+| Zakres | Rozmiar | Partycja w Linuksie | Zawartość |
+|---|---|---|---|
+| `0x000000–0x070000` | 448 KB | `mtd0 boot` | sboot + MBoot (bez zmian) |
+| `0x070000–0x080000` | 64 KB | `mtd1 logo` | logo startowe (bez zmian) |
+| `0x080000–0x1D0000` | 1,31 MB | `mtd2 kernel` | kernel LZMA (ok. 1,21 MB) |
+| `0x1D0000–0x1E0000` | 64 KB | `mtd3 logofix` | `logofix.bin` (1 KB) |
+| `0x1E0000–0x3E0000` | 2 MB | `mtd4 rootfs` | squashfs (1,97 MB) |
+| `0x3E0000–0x400000` | 128 KB | `mtd5 env` | środowisko MBoota (bez zmian) |
+
+W Linuksie wszystkie partycje są tylko do odczytu. Kernel i rootfs wgrywa MBoot (`spi_wrc`). Zapas: kernel ok. 100 KB, rootfs 32 KB.
+
+## Kernel `kernel_mini`
+
+Gałąź `kernel_mini` w repo `linux_msd781x`, w osobnym katalogu roboczym `linux_mini/` (git worktree), więc pełny kernel #13 w `linux_msd781x/` zostaje nietknięty. Konfiguracja: `arch/mips/configs/wiwa_hd95_mini_defconfig`.
+
+**Co ma:** konsola szeregowa, framebuffer `mstar-gopfb` z konsolą na ekranie (font TER16x32), USB (pendrive i klawiatura), I2C (tuner), panel przedni, `/dev/mem` (dźwięk przez DSP), vfat, ext2, squashfs, MTD + sterownik flasha `spi-mstar-isp` (+ `spi-nor`).
+
+**Czego nie ma:** modułów, sieci, ALSA, DRM, V4L, RTC, watchdoga, opcji debugowania, swapu, cgroups i namespace'ów. Kompilowany z `-Os`.
+
+**Rozmiar:** 1,21 MB po LZMA (pełny kernel #13: 2,87 MB). To prawie sam kod (`.text` 2,7 MB, po LZMA 985 KB). Duże bufory i pusty 1 MB na DTB to zera i po kompresji nic nie ważą. Rdzeń, bez którego Linux nie działa (planista, pamięć, VFS, `lib`, `arch`), to ok. 1,6 MB surowego kodu; minimalny kernel 6.7 na MIPS ma po LZMA ok. 500–600 KB, reszta to nasze sterowniki (USB z warstwą SCSI, tty/fbcon, HID, framebuffer, FAT).
+
+Dalsze możliwe cięcia (odłożone, bo budżet się mieści): `LD_DEAD_CODE_DATA_ELIMINATION` (−50…100 KB), opcje `EXPERT` jak `BASE_FULL`, `MULTIUSER`, `EPOLL` (−40…70 KB), ext2 (−16 KB), `SMP` (−40 KB, ale bez drugiego rdzenia), `PRINTK` (−100 KB, ale bez komunikatów kernela). Realne minimum: ok. 850–950 KB.
+
+**Budowanie** (w `linux_mini/`, GCC 12.2 jak dla pełnego kernela):
+```sh
+make ARCH=mips CROSS_COMPILE=mipsel-linux-gnu- -j6
+make ARCH=mips CROSS_COMPILE=mipsel-linux-gnu- dtbs
+cp vmlinux vmlinux_dtb
+mipsel-linux-gnu-objcopy --update-section .appended_dtb=arch/mips/boot/dts/mstar/msd7816-test.dtb vmlinux_dtb
+mipsel-linux-gnu-objcopy -O binary vmlinux_dtb vmlinux_mini.bin
+```
+Start zawsze przez `go 0x80000000` (opcja `CONFIG_BOOT_RAW` stawia na początku obrazu skok do właściwego wejścia).
+
+Linia poleceń kernela jest w DTS (`bootargs`). Wersja do flasha ma `root=/dev/mtdblock4 rootfstype=squashfs ro`. Do testów z pendrive'a robi się kopię z innym DTB (niżej).
+
+## Rootfs (`rootfs_mini/`)
+
+Osobna konfiguracja Buildroota, budowana do `rootfs_mini/output` (główny Buildroot i jego rootfs na pendrivie zostają bez zmian). Instrukcja budowania: `rootfs_mini/README.md`.
+
+**Zawartość:**
+- BusyBox, statycznie z musl (1,2 MB przed kompresją);
+- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem (581 KB), i `/home/doom1.wad`; polecenie `doom` uruchamia grę;
+- getty na konsoli szeregowej i na ekranie (`tty1`), login `root` / `1234`;
+- `/tmp` i `/run` w RAM (tmpfs), reszta tylko do odczytu;
+- `S20usb`: montuje pierwszą partycję FAT pendrive'a pod `/mnt/usb`, jeśli jest.
+
+**Rozmiar obrazu:** 2 064 384 B (squashfs, XZ, blok 1 MB). Największy jest `doom1.wad` (4,2 MB, po kompresji ok. 1,37 MB). Blok 1 MB zamiast domyślnych 128 KB oszczędza ok. 50 KB. `post_build.sh` usuwa `lib/libc.a` (3,2 MB, Buildroot kopiuje go przy statycznym musl), skrypty sieci, crona i `seedrng`.
+
+⚠️ **Obraz rootfs i `rootfs_mini/overlay/home/fbdoom` zawierają kod DSP MStara** (fbDOOM z dźwiękiem). Nie wolno ich publikować.
+
+## Test bez zapisu do flasha (zrobione 2026-10-19)
+
+Rootfs squashfs można sprawdzić z pendrive'a, zanim trafi do flasha:
+1. Obraz na trzecią partycję pendrive'a (`sda3`, wcześniej nieużywany swap): `dd if=rootfs.squashfs of=/dev/sda3 bs=64k`.
+2. Kernel z DTB, w którym `bootargs` ma `root=/dev/sda3 rootfstype=squashfs ro` (`linux_mini/vmlinux_sqtest.bin`, robiony przez `dtc` z gotowego DTB i podmianę `.appended_dtb`, bez przebudowy kernela).
+3. Z MBoota: `logofix` jak zwykle, `fatload usb 0 0x80000000 vmlinux_sqtest.bin`, `go 0x80000000`.
+
+Wynik: start do logowania w 2,6 s, `Mounted root (squashfs filesystem) readonly`, pendrive zamontowany pod `/mnt/usb`, 34 MB wolnej RAM, `doom` z obrazem i dźwiękiem na HDMI i SCART.
+
+## Zapis do flasha (zrobione 2026-10-19) ✅
+
+**Wykonane 2026-10-19:** trzy obrazy zapisane `spi_wrc` z pendrive'a, każdy z `Verifying...OK` i zgodnym `cmp.l` (rootfs 524 288, logofix 16 384, kernel 311 296 słów). Ręczny start (`run bootcmd`) i autostart po `reset` działają: logo, `logofix` (`rc = 0x0`), `CRC check success`, kernel, `Mounted root (squashfs filesystem) readonly on device 31:4`, `wiwa login:` po ok. 10 s; `doom` z obrazem i dźwiękiem z rootfs we flashu. Oryginalny firmware (`0x80000–0x3E0000`) jest skasowany.
+
+**Autostart (zapisany `saveenv`).** Jedna linia `setenv bootcmd …` ma ok. 230 znaków, a MBoot ucina linię polecenia po ok. 128 znakach (cicho, bez błędu), więc autostart jest podzielony na zmienne:
+```
+wdoff     = mw.w 0xBF006040 0 1;mw.w 0xBF006010 0 1;mw.w 0xBF006014 0 1;
+flashlogo = spi_rdc 0x80F00000 0x1D0000 0x10000;go 0x80F00000;
+flashboot = spi_rdc 0x80B00000 0x80000 0x130000;LzmaDec 0x80B00000 0x1285DA 0x80000000 0x81000000;go 0x80000000;
+bootcmd   = run wdoff;usb start;run flashlogo;run flashboot;
+bootlinux = (bez zmian) start systemu z pendrive'a: Enter przy starcie, potem  run wdoff; run bootlinux
+```
+Przy nowym kernelu zmienia się tylko `flashboot` (rozmiar w `LzmaDec`). `usb start` w `bootcmd` jest konieczne: kernel sam nie włącza PHY USB (węzeł PHY w DTS jest wyłączony) i bez inicjalizacji przez MBoot port jest martwy (w `dmesg` nic przy wkładaniu pendrive'a); dodane 2026-10-19. Bez pendrive'a `usb start` tylko zgłasza błąd i start idzie dalej. Rootfs od 2026-10-19 wieczorem: napis `MSD7818 mini Linux`, host `msd7818`, `S20usb` montuje pendrive w tle (do 15 s).
+
+Poniżej opis przygotowania (stan sprzed zapisu).
+
+Stan sprzed zapisu: obrazy były gotowe i kernel z LZMA sprawdzony w MBoocie z RAM (bez zapisu). Sam zapis **skasował oryginalny firmware** (`0x80000–0x3E0000`). MBoot, logo i środowisko zostają nietknięte. Kopie flasha: `binaries/wiwa_hd95_BACKUP.BIN` (oryginał) i `flash_20261019.bin` na pendrivie (stan z nowym logo, zrobiona `memdump` przed testami zapisu).
+
+### Format obrazu kernela dla `LzmaDec` (zweryfikowane na płytce) ✅
+
+MBoot `LzmaDec IN ROZMIAR OUT BUFOR` (argumenty z pomocy: `u32LzmaBufAddr`, `u32AppFileLen`, `u32AppDramAddr`, `u32LzmaDecBufAddr`) robi to (kod w `RAM87_DU.RAM` od `0x87613308`):
+1. czyta nagłówek „LZMA alone” (13 B: właściwości, słownik, rozmiar po rozpakowaniu) i rozpakowuje pod `OUT`;
+2. **ostatnie 4 bajty rozpakowanych danych to oczekiwana suma** (little-endian);
+3. liczy **zwykłe CRC32** (jak `zlib.crc32`, funkcja `0x876364F8`) z rozpakowanych danych bez tych 4 bajtów i porównuje.
+
+Przy zgodności wypisuje `CRC check success !!`. Przy niezgodności wypisuje `Please reset and upgrading!`, **zapisuje środowisko MBoota** i resetuje płytkę. Przy pierwszej próbie (obraz bez sumy) to nadpisało `LOGO_BIN_SIZE` starą wartością `BFCE` i logo wyświetlało się ze śmieciami (naprawione `setenv LOGO_BIN_SIZE FA26; saveenv`). Oryginał ma tę samą budowę: CRC32 `D814DE68` na końcu rozpakowanych 7 324 916 B.
+
+Budowa `kernel.lzma` (w `linux_mini/`, z `vmlinux_flash.bin` z docelowym DTB):
+```python
+import lzma, struct, zlib
+raw = open('vmlinux_flash.bin', 'rb').read()
+payload = raw + struct.pack('<I', zlib.crc32(raw))           # CRC32 na końcu
+c = bytearray(lzma.compress(payload, format=lzma.FORMAT_ALONE,
+    filters=[{"id": lzma.FILTER_LZMA1, "preset": 9 | lzma.PRESET_EXTREME, "dict_size": 8 << 20}]))
+c[5:13] = struct.pack('<Q', len(payload))                     # znany rozmiar, jak w oryginale
+open('kernel.lzma', 'wb').write(c)
+```
+Test z RAM: `fatload usb 0 0x80B00000 kernel.lzma`, `LzmaDec 0x80B00000 0x1285DA 0x80000000 0x81000000` → `CRC check success`, `go 0x80000000` → kernel wykrywa flash i 6 partycji i kończy na `Unable to mount root fs on /dev/mtdblock4` (bo rootfs jeszcze nie jest we flashu). Watchdog trzeba przedtem wyłączyć (`mw.w` jak w `bootcmd`).
+
+### Pliki do zapisu (`flash_images/`, dopełnione `0xFF` do bloków 64 KB)
+
+| Plik | Rozmiar | Offset we flashu | Zawartość |
+|---|---|---|---|
+| `kernel.img` | `0x130000` | `0x80000` | `kernel.lzma` 1 213 914 B (`0x1285DA`), kernel #4 z `root=/dev/mtdblock4` |
+| `logofix.img` | `0x10000` | `0x1D0000` | `logofix.bin` 1008 B |
+| `rootfs.img` | `0x200000` | `0x1E0000` | `rootfs.squashfs` 2 064 384 B (**kod MStara, nie publikować**) |
+
+### Kroki
+
+1. Z Linuksa wgrać trzy pliki na FAT pendrive'a (`uart_upload.py` albo pendrive w PC).
+2. W MBoocie dla każdego pliku (przykład dla rootfs):
    ```
-   spi_rdc 0x80B00000 <offset> <rozmiar>
-   LzmaDec 0x80B00000 <rozmiar> 0x80000000 <limit>
-   go <entry>
+   usb start
+   fatload usb 0 0x80C00000 rootfs.img
+   spi_wrc 0x80C00000 0x1E0000 0x200000       # Erasing... Writing... Verifying...OK
+   spi_rdc 0x81000000 0x1E0000 0x200000
+   cmp.l 0x80C00000 0x81000000 80000            # 0x80000 słów = 2 MB
    ```
-   Rootfs w RAM (initramfs), więc po restarcie zawsze wraca czysty system.
-2. **Zapisywalne `/home`:** osobna partycja flasha z JFFS2. Wymaga działającego sterownika flasha SPI w Linuksie. Teraz `/proc/mtd` jest pusty: węzeł `isp` / `flash@0` w DTS jest, ale nic się nie rejestruje. To trzeba zbadać ❓. Plan B: bez zapisu.
-3. **`kernel_mini`** (gałąź w `linux_msd781x`): konfiguracja od zera. Zostają `mstar-gopfb`, 8250 (UART), EHCI + usb-storage + HID, squashfs/ext2/vfat, initramfs (xz/lzma), MTD/SPI-NOR + JFFS2 (gdy zadziała). Bez sieci, modułów, ALSA i V4L. Osobno: usunięcie z drzewa nieużywanego kodu (inne `arch/`, sterowniki), żeby repo było mniejsze i czytelniejsze. Rozmiaru obrazu to nie zmienia.
-4. **Rootfs:** Buildroot z **musl** i statycznym linkowaniem (osobna konfiguracja), BusyBox, fbdoom zbudowany z `NOSDL` i statycznie, `doom1.wad`. Skrypt startowy:
-   - montuje `/home` (JFFS2) i pendrive (`/mnt/usb`, jeśli jest);
-   - opcjonalnie od razu uruchamia Dooma na `tty1`.
-5. **Zapis do flasha** (za zgodą, nieodwracalne bez kopii): `spi_wrc` z pendrive'a, nowy `bootcmd`. Przywrócenie oryginału: [logo_startowe.md](logo_startowe.md) (te same polecenia) + `binaries/wiwa_hd95_BACKUP.BIN`.
+   tak samo `kernel.img` → `0x80000`, `0x130000` (`cmp.l … 4C000`) i `logofix.img` → `0x1D0000`, `0x10000` (`cmp.l … 4000`).
+3. Nowy autostart (stary start z pendrive'a zostaje jako `run bootlinux`):
+   ```
+   setenv bootcmd mw.w 0xBF006040 0 1\;mw.w 0xBF006010 0 1\;mw.w 0xBF006014 0 1\;spi_rdc 0x80F00000 0x1D0000 0x10000\;go 0x80F00000\;spi_rdc 0x80B00000 0x80000 0x130000\;LzmaDec 0x80B00000 0x1285DA 0x80000000 0x81000000\;go 0x80000000\;
+   saveenv
+   ```
+   Rozmiar w `LzmaDec` (`0x1285DA`) trzeba zmienić przy każdym nowym kernelu.
+4. Restart bez pendrive'a: logo, potem Linux z rootfs we flashu.
 
-## Etapy
+Gdyby coś poszło nie tak: Enter przy starcie daje konsolę MBoota (MBoot nie jest zapisywany), `run bootlinux` startuje system z pendrive'a. Powrót do oryginału: z kopii flasha zapisać `0x80000–0x3E0000` przez `spi_wrc` i przywrócić oryginalny `bootcmd`.
 
-1. `kernel_mini` uruchamiany jeszcze z pendrive'a (`fatload`): sprawdzić rozmiar i działanie (konsola, USB, fb).
-2. initramfs z BusyBoxem i fbDOOM (statycznie) wbudowany w kernel: start bez rootfs na pendrivie.
-3. Obraz LZMA do flasha, start przez `spi_rdc` + `LzmaDec`.
-4. Sterownik flasha w Linuksie i JFFS2 na `/home`.
+## Historia decyzji
+
+- 2026-10-14: plan z initramfs (cały system w RAM, jeden obraz LZMA).
+- 2026-10-19: zamiast initramfs **squashfs czytany prosto z flasha** (nie zajmuje RAM, kernel i rootfs osobno). Okazało się, że cały flash jest widoczny w pamięci pod `0x1FC00000`, więc odczyt działał od razu (`mtd-rom`), a potem powstał pełny sterownik ISP z zapisem.

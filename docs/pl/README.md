@@ -26,14 +26,16 @@ Każda informacja ma oznaczenie pewności:
 | [mxl5007t.md](mxl5007t.md) | Tuner MxL5007T: odczyt/zapis rejestrów krok po kroku (devmem i i2ctransfer), inicjalizacja, strojenie |
 | [i2c.md](i2c.md) | Sprzętowe I2C (MIIC): porty, rejestry, pinmux, tuner MxL5007T |
 | [przyciski_sar.md](przyciski_sar.md) | Panel przedni: przyciski POWER/CH+/CH− i wyświetlacz 7-seg. na układzie FD650 (GPIO na pinach SAR); SAR ADC |
-| [gpio.md](gpio.md) | Co wiadomo o GPIO |
+| [gpio.md](gpio.md) | GPIO: tablica pinów z BSP, znane piny (wyciszenie audio GPIO44, SCART RGB GPIO47) |
 | [demodulator_if.md](demodulator_if.md) | Tor IF → ADC → demodulator DVB-T (8051 + DSP), skrzynka pocztowa z Linuksa, rejestr sygnału `0x2098`, widmo RF przemiatane (`rfscan`) |
 | [ir_pilot.md](ir_pilot.md) | Pilot IR: dekoder w PM, firmware PM51, rejestry, drogi pod Linuksem |
-| [audio.md](audio.md) | Blok audio (Vivaldi/MAD, 2× DSP), czy MIPS może grać dźwięk |
+| [audio.md](audio.md) | Blok audio (Vivaldi/MAD, 2× DSP): jak Linux gra dźwięk przez DSP, cichy SCART (wyciszenie na GPIO44) |
 | [wlasny_dsp_dzwiek.md](wlasny_dsp_dzwiek.md) | Dźwięk na HDMI z własnego programu DSP SE, bez kodu MStara: format próbki (24 bit w `0x8060/1`), potwierdzenie przerwania, `own_audio.h`, minimalny init (4 rejestry), fbDOOM `OWN_SOUND=1` |
 | [grafika_gop.md](grafika_gop.md) | GOP: rejestry bufora, skalowania i vsync; plan lepszego framebuffera |
 | [skanowanie_kanalow.md](skanowanie_kanalow.md) | Jak oryginalny system szuka kanałów DVB-T: tabele częstotliwości, maszyna stanów skanu, lock demodulatora, tablice PAT/PMT/SDT/NIT |
-| [plan_mini_system.md](plan_mini_system.md) | Plan (nierozpoczęty): mini Linux z fbDOOM w flashu SPI zamiast oryginalnego systemu |
+| [plan_mini_system.md](plan_mini_system.md) | Mini Linux z fbDOOM we flashu SPI zamiast oryginału: mały kernel `kernel_mini`, rootfs squashfs, układ flasha, stan (wszystko działa z pendrive'a, zapis do flasha czeka) |
+| [plan_bootloader.md](plan_bootloader.md) | Plan i implementacja (etapy 1–3 napisane, nietestowane): własny bootloader z menu uruchamiany przez MBoot, wybór systemu z flasha albo z pendrive'a |
+| [flash_spi.md](flash_spi.md) | Flash SPI z Linuksa: odczyt przez okno `0x1FC00000`, sterownik zapisu `spi-mstar-isp`, ochrona WP# (PM GPIO7) i `spi_wp 0`, rejestry ISP |
 | [miganie_obrazu_miu.md](miganie_obrazu_miu.md) | Dlaczego obraz migał w Doomie: GOP przegrywał z procesorem w arbitrażu pamięci (MIU); dochodzenie krok po kroku i poprawka priorytetów |
 | [doom.md](doom.md) | fbDOOM: podwójny bufor, ~35–50 kl./s, sterowanie przez konsolę szeregową, uruchamianie przez `openvt` |
 | [sterownik_gopfb.md](sterownik_gopfb.md) | Jak krok po kroku powstał sterownik fbdev `mstar-gopfb` z podwójnym buforowaniem i vsync |
