@@ -18,12 +18,12 @@ undone, and before it you make a full backup of the flash.
 
   | Download | Repo / release | Contents |
   |---|---|---|
-  | kernel | [linux_msd781x releases](https://github.com/mztulip/linux_msd781x/releases) | `vmlinux.bin`, `modules/*.ko`, `logofix.bin`, DTB, config |
+  | kernel | [linux_msd781x releases](https://github.com/mztulip/linux_msd781x/releases) | `vmlinux.bin`, `logofix.bin`, DTB, config |
   | rootfs | this repo: `rootfs_gcc.7z` | Buildroot root filesystem (ext2, with gcc) |
   | applications | [this repo's releases](https://github.com/mztulip/msd7818_rootfs_kernel/releases) | test and hardware tools (`fbflip`, `frontpanel`, `rfscan`, …) |
   | fbDOOM | [fbDOOM releases](https://github.com/mztulip/fbDOOM/releases) | `fbdoom` (no sound) |
 
-  `vmlinux.bin`, `logofix/logofix.bin` and `modules/` are also in this repo.
+  `vmlinux.bin` and `logofix/logofix.bin` are also in this repo.
 
 ## 1. Get the bootloader prompt and back up the flash
 
@@ -59,13 +59,14 @@ usb start
 fatload usb 0 0x80F00000 logofix.bin
 go 0x80F00000
 fatload usb 0 0x80000000 vmlinux.bin
-go 0x805e8b04
+go 0x80000000
 ```
 - `logofix` switches the display to RGB565 and fixes the boot logo
   colours. The kernel expects it; without it the console is light blue.
-- `0x805e8b04` is the entry point of this kernel. It changes with every
-  rebuild (`readelf -h vmlinux | grep Entry`). The kernel release notes
-  give it.
+- `0x80000000` is the load address. The kernel is built with
+  `CONFIG_BOOT_RAW=y`, so its first instruction jumps to the real entry
+  point (`0x805e9be4` for this build; it changes with every rebuild). The
+  same `go 0x80000000` therefore works for any kernel build.
 
 The kernel prints to the serial console and to the screen. It waits for
 the pendrive (`root=/dev/sda2 rootwait`), then shows a login prompt on
@@ -79,7 +80,7 @@ is normal.
 The watchdog of the SoC must be switched off first, otherwise the board
 resets in a loop:
 ```
-setenv bootlinux usb start\;fatload usb 0 0x80F00000 logofix.bin\;go 0x80F00000\;fatload usb 0 0x80000000 vmlinux.bin\;go 0x805e8b04\;
+setenv bootlinux usb start\;fatload usb 0 0x80F00000 logofix.bin\;go 0x80F00000\;fatload usb 0 0x80000000 vmlinux.bin\;go 0x80000000\;
 setenv bootcmd mw.w 0xBF006040 0 1\;mw.w 0xBF006010 0 1\;mw.w 0xBF006014 0 1\;run bootlinux\;
 saveenv
 ```
@@ -105,16 +106,13 @@ Without a network, there are two ways:
 The rootfs has gcc, so the small C programs in `tools/board/` can also be
 compiled on the board itself (`gcc -O2 -o x x.c`).
 
-## 6. Modules: I2C (tuner) and the front panel
+## 6. I2C (tuner) and the front panel
 
+Both drivers are built into the kernel.
 ```
-insmod i2c-mstar-miic.ko
-insmod mstar-fd650-panel.ko
 i2ctransfer -y 0 w2@0x60 0xfb 0xd9 r1        # MxL5007T tuner ID, expect 0x14
 echo HELO > /sys/devices/platform/1f000000.riu/1f002840.front-panel/text
 ```
-The two drivers must stay modules. Built into the kernel, they make the
-HDMI picture jitter.
 
 ## 7. Framebuffer and fbDOOM
 

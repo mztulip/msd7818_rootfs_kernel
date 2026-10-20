@@ -20,10 +20,8 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 
 | File | What |
 |---|---|
-| `vmlinux.bin` | kernel 6.7.0-rc6 with appended DTB, entry point **`0x805e8b04`** |
+| `vmlinux.bin` | kernel 6.7.0-rc6 with appended DTB, entry point **`0x805e9be4`**; I2C and front panel drivers built in |
 | `logofix/logofix.bin` | MBoot helper that fixes the boot logo colours, run before the kernel (source and `build.sh` next to it) |
-| `modules/i2c-mstar-miic.ko` | hardware I2C (MIIC) driver, bus 0 = MxL5007T tuner at `0x60` |
-| `modules/mstar-fd650-panel.ko` | front panel: POWER / CH+ / CH- keys and the 4-digit display |
 | `rootfs_gcc.7z` | Buildroot rootfs (ext2) with gcc |
 | `docs/framebuffer_driver.md` | how the double buffered framebuffer driver was written, step by step |
 | `docs/display_flicker_miu.md` | why the picture glitched under memory load (fbDOOM) and the MIU priority fix |
@@ -78,8 +76,9 @@ with it yet.
 - **I2C driver** for the Kronus hardware I2C master (a Philips SIO1 style
   engine), pinmux set from the DTS.
 - **Front panel driver** (FD650/TM1650 style controller on the PM SAR pins).
-- Both drivers are **modules**: built into the kernel they make the HDMI
-  picture jitter.
+- Both drivers are **built into the kernel**, no `insmod` needed. The HDMI
+  jitter once blamed on them was the GOP memory starvation fixed by the MIU
+  priority above.
 
 ## Pendrive
 
@@ -105,8 +104,10 @@ usb start
 fatload usb 0 0x80F00000 logofix.bin
 go 0x80F00000
 fatload usb 0 0x80000000 vmlinux.bin
-go 0x805e8b04
+go 0x80000000
 ```
+`go 0x80000000` works for any build: with `CONFIG_BOOT_RAW=y` the first
+instruction of the image is a jump to the real entry point (`0x805e9be4` here).
 Log in as `root` (no password; set one with `passwd`).
 
 `go 0x80F00000` should end with `## Application terminated, rc = 0x0`
@@ -115,13 +116,16 @@ Log in as `root` (no password; set one with `passwd`).
 Automatic start. The watchdog must be disabled first, otherwise the board
 keeps resetting:
 ```
-setenv bootlinux usb start\;fatload usb 0 0x80F00000 logofix.bin\;go 0x80F00000\;fatload usb 0 0x80000000 vmlinux.bin\;go 0x805e8b04\;
+setenv bootlinux usb start\;fatload usb 0 0x80F00000 logofix.bin\;go 0x80F00000\;fatload usb 0 0x80000000 vmlinux.bin\;go 0x80000000\;
 setenv bootcmd mw.w 0xBF006040 0 1\;mw.w 0xBF006010 0 1\;mw.w 0xBF006014 0 1\;run bootlinux\;
 saveenv
 ```
-Then reset the power supply. The entry point changes with every kernel
-rebuild (`readelf -h vmlinux | grep Entry`), so update `bootlinux` when you
-replace `vmlinux.bin`.
+Then reset the power supply. Because of `go 0x80000000`, `bootlinux` does
+not change when you replace `vmlinux.bin` with a new build.
+
+The three `mw.w` writes switch off the SoC watchdog (`0xBF006000`): MBoot
+leaves it running for the original firmware, which keeps resetting it, and
+Linux does not.
 
 The stock bootcmd, to restore the original firmware:
 ```
@@ -129,13 +133,11 @@ setenv bootcmd spi_rdc 0x80B00000 0x8001C 0x289977\;LzmaDec 0x80B00000 0x289977 
 saveenv
 ```
 
-## Modules
+## I2C and front panel
 
-Copy `modules/*.ko` to the rootfs (for example `/root`) and load them after boot:
-```
-insmod /root/i2c-mstar-miic.ko
-insmod /root/mstar-fd650-panel.ko
-```
+Both drivers are built in. I2C bus 0 is the MxL5007T tuner at `0x60`; the
+front panel (FD650/TM1650 style) gives POWER / CH+ / CH- keys and the
+4-digit display.
 
 I2C, reading the MxL5007T tuner ID (expected `0x14`):
 ```

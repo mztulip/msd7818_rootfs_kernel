@@ -11,7 +11,7 @@ and [`wiwa_hd95_defconfig`](https://github.com/mztulip/linux_msd781x/blob/mstar_
 Test program: [`examples/fbflip.c`](../examples/fbflip.c).
 
 Status: works on the WIWA HD95 (MSD7818). It is part of the `vmlinux.bin`
-in this repository (entry `0x805e8b04`).
+in this repository (entry `0x805e9be4`).
 
 **Update:** steps 9-10 describe the first version (trigger latch, polling
 the ACK bit). Under memory load (fbDOOM) the picture glitched. The cause

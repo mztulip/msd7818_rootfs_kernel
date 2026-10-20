@@ -43,7 +43,6 @@ Linux in the same session:
 ```
 On the board (as root):
 ```sh
-insmod i2c-mstar-miic.ko
 echo 0 > /sys/class/vtconsole/vtcon1/bind      # otherwise the text console draws over the graph
 ./rfscan 44 880 4 1500 1 30                     # START STOP STEP_MHZ READS LOOPS SETTLE_MS
 ./rfscan 466 700 1 1500 0 30 > /tmp/rfscan.log 2>&1 &   # LOOPS 0 = sweep forever, in the background
