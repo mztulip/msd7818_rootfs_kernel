@@ -2,7 +2,7 @@
 
 A small bare-metal boot menu (like GRUB) that MBoot starts with `go`. Design notes and the full plan, in Polish: `docs/pl/plan_bootloader.md`.
 
-**Status (2026-10-20): stages 1–3 are written but not tested on the board yet.** The LZMA decoder is verified on a PC.
+**Status (2026-10-20): tested from RAM on the board over UART:** the default boot from flash (LZMA decode + CRC32 in about 1.5 s, shell 8.7 s after `go`), key `2` booting the kernel from the stick, and the menu without a stick kernel all work. The screen menu and the front-panel buttons are not checked yet. Not written to the flash yet.
 
 ## What it does
 

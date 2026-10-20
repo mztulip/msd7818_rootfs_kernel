@@ -1,6 +1,6 @@
 # Plan: własny bootloader z menu (odpowiednik GRUB-a)
 
-Ustalony 2026-10-19. **Etapy 1–3 napisane 2026-10-20, jeszcze nie testowane na płytce** (kod: `tools/baremetal/bootsel/`). Kontekst: od 2026-10-19 płytka startuje z flasha ([plan_mini_system.md](plan_mini_system.md)), a system z pendrive'a uruchamia się tylko ręcznie (Enter przy starcie, `run wdoff; run bootlinux`).
+Ustalony 2026-10-19. **Etapy 1–3 napisane 2026-10-20. Etapy 1 i 2 sprawdzone na płytce 2026-10-20 (test z RAM, bez zapisu do flasha); etap 3 (ekran, przyciski panelu) jeszcze nie** (kod: `tools/baremetal/bootsel/`, wyniki niżej w „Test z RAM”). Kontekst: od 2026-10-19 płytka startuje z flasha ([plan_mini_system.md](plan_mini_system.md)), a system z pendrive'a uruchamia się tylko ręcznie (Enter przy starcie, `run wdoff; run bootlinux`).
 
 ## Cel
 
@@ -131,6 +131,19 @@ fatload usb 0 0x80F00400 bootsel.bin
 go 0x80F00400
 ```
 Oczekiwane: menu na UART, na ekranie i na panelu, po 3 s `1` → system z flasha (`msd7818 login:`); z `2` → system z pendrive'a (`buildroot login:`). Bez `vmlinux.bin` menu pokazuje tylko opcję 1.
+
+**Wyniki na płytce (2026-10-20, ✅ sprawdzone na płytce, tylko UART):**
+
+| Test | Wynik |
+|---|---|
+| 1. bez klawisza, pendrive z `vmlinux.bin` | ✅ menu z opcjami 1 i 2, odliczanie `3 2 1`, `flash kernel, 0x003c7908 bytes, decoding... CRC ok`, start kernela z flasha (#4, `root=/dev/mtdblock4`), powłoka po 8,7 s od `go` |
+| 2. klawisz `2` na UART | ✅ odliczanie zatrzymane, kopia z `0x81000000`, start kernela #13 z pendrive'a (`root=/dev/sda2`, `buildroot login:`) |
+| 3. przyciski panelu | ❓ niesprawdzone: w próbie żaden klawisz nie dotarł (odliczanie doszło do końca, start z flasha), ale użytkownik nie miał podłączonego monitora i nie wiadomo, czy przycisk był wciśnięty w ciągu 3 s |
+| 4. bez `fatload vmlinux.bin` | ✅ menu tylko z opcją 1 (`no kernel from the USB stick`), start z flasha |
+
+Dekodowanie LZMA (3,9 MB wyniku) z CRC32 trwa na płytce ok. **1,5 s** (od `decoding...` do `CRC ok`). `di` + opróżnienie L1 przed skokiem wystarcza: oba kernele startują poprawnie, mimo że MBoot ma włączony L2. Na ekranie i na wyświetlaczu panelu nic jeszcze nie oglądane.
+
+Uwaga: pierwszy start po przełożeniu pendrive'a z PC czasem wisi (znany problem z enumeracją USB, błąd -71); po ponownym włączeniu zasilania działa.
 
 ### Docelowy autostart (etap 4, po testach)
 
