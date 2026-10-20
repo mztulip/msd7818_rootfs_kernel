@@ -46,8 +46,8 @@ Needs Python 3 and Pillow.
 python3 png2logo.py my_logo.png -o linux_logo.jpg --bg 102040
 #   linux_logo.jpg: 36644 bytes, quality 92
 #   MBoot: setenv LOGO_BIN_SIZE 8F24
-#   CRC32 of the JPEG:              56A9312B  (crc32 0x80C00000 8F24)
-#   CRC32 of the 64 KB flash block: 33FB1A41  (crc32 0x80C00000 0x10000)
+#   CRC32 of the JPEG:              56A9312B
+#   CRC32 of the 64 KB flash block: 33FB1A41
 ```
 
 - Best results with a **16:9** source (1920x1080, 1024x576, ...): nothing is
@@ -58,7 +58,7 @@ python3 png2logo.py my_logo.png -o linux_logo.jpg --bg 102040
 - The script lowers the JPEG quality until the file fits in 64 KB. Fine
   detail and noise make the file bigger. If the quality drops below about
   70, simplify the picture.
-- Write down `LOGO_BIN_SIZE` and both CRCs, they are needed below.
+- Write down `LOGO_BIN_SIZE`. The CRCs are for checking the file on the PC or in Linux (`crc32 linux_logo.jpg` in BusyBox). **The MBoot on this board has no working `crc32` command** (it is listed by `help` but answers `Unknown command`), so in MBoot the data is checked by comparing two copies in RAM with `cmp`.
 
 To rebuild the Linux logo itself:
 ```sh
@@ -80,8 +80,9 @@ python3 mklogo.py
    printenv LOGO_BIN_SIZE                         # e.g. BFCE on the WIWA HD95
    usb start
    spi_rdc 0x80B00000 0x70000 0x10000
-   crc32 0x80B00000 0x10000                       # write it down
    fatwrite usb 0 0x80B00000 logo_backup.bin 10000
+   fatload usb 0 0x80B10000 logo_backup.bin       # read the backup back
+   cmp.l 0x80B00000 0x80B10000 4000               # "Total of 16384 words were the same"
    ```
    It is a good idea to back up the whole 4 MB flash once as well:
    `spi_rdc 0x80000000 0 400000` and then `fatwrite usb 0 0x80000000 flash_backup.bin 400000`.
@@ -89,14 +90,13 @@ python3 mklogo.py
    ```
    mw.l 0x80C00000 0 4000             # 0x4000 words = 64 KB of zeros
    usb start
-   fatload usb 0 0x80C00000 linux_logo.jpg
-   crc32 0x80C00000 0x10000           # must equal "CRC32 of the 64 KB flash block" from png2logo.py
+   fatload usb 0 0x80C00000 linux_logo.jpg     # the byte count must match the file size
    ```
 5. **Write it to the flash.** `spi_wrc` erases, writes and verifies the block:
    ```
    spi_wrc 0x80C00000 0x70000 0x10000    # Erasing... Writing... Verifying...OK !!!
    spi_rdc 0x80D00000 0x70000 0x10000
-   crc32 0x80D00000 0x10000              # same value as in step 4
+   cmp.l 0x80C00000 0x80D00000 4000      # flash = RAM: "Total of 16384 words were the same"
    ```
 6. **Set the new size** (the value printed by png2logo.py):
    ```
@@ -117,9 +117,10 @@ Notes:
 With `logo_backup.bin` (step 3) on the FAT partition, in MBoot:
 ```
 usb start
-fatload usb 0 0x80C00000 logo_backup.bin
-crc32 0x80C00000 0x10000              # the value written down in step 3
+fatload usb 0 0x80C00000 logo_backup.bin   # "65536 bytes read"
 spi_wrc 0x80C00000 0x70000 0x10000
+spi_rdc 0x80D00000 0x70000 0x10000
+cmp.l 0x80C00000 0x80D00000 4000
 setenv LOGO_BIN_SIZE BFCE             # the old value from step 3
 saveenv
 ```

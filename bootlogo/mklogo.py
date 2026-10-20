@@ -30,7 +30,7 @@ dr.text((tx,165),'Linux',font=bold,fill=(245,248,255))
 dr.rectangle([tx+6,328,tx+400,332],fill=(255,190,40))
 dr.text((tx+6,345),'on MStar MSD7818',font=reg,fill=(120,205,255))
 dr.text((tx+6,398),'mips32r2 · 34Kc · 6.7 · buildroot',font=mono,fill=(150,170,200))
-dr.text((W//2,H-40),'WIWA HD95',font=ImageFont.truetype('/usr/share/fonts/TTF/DejaVuSans.ttf',20),fill=(90,110,140),anchor='mm')
+dr.text((W//2,H-40),'Tuner board',font=ImageFont.truetype('/usr/share/fonts/TTF/DejaVuSans.ttf',20),fill=(90,110,140),anchor='mm')
 img.save('design_16x9.png')
 small=img.resize((720,576),Image.LANCZOS)
 import os

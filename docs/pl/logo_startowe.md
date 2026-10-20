@@ -50,14 +50,14 @@ ls -l linux_logo.jpg     # MUSI być < 65536 B; skrypt dobiera jakość JPEG
 python3 tools/bootlogo/png2logo.py moje_logo.png -o linux_logo.jpg --bg 102040
 #   linux_logo.jpg: 36644 bytes, quality 92
 #   MBoot: setenv LOGO_BIN_SIZE 8F24
-#   CRC32 of the JPEG:              56A9312B  (crc32 0x80C00000 8F24)
-#   CRC32 of the 64 KB flash block: 33FB1A41  (crc32 0x80C00000 0x10000)
+#   CRC32 of the JPEG:              56A9312B
+#   CRC32 of the 64 KB flash block: 33FB1A41
 ```
 
 - Najlepiej przygotować PNG w proporcjach **16:9** (np. 1920×1080 albo 1024×576). Wtedy nie ma marginesów i nic nie jest zniekształcone. Obraz w innych proporcjach dostanie pasy w kolorze `--bg`, a przezroczystość też wypełni się kolorem `--bg`.
 - `--stretch` rozciąga obraz do 720×576 bez zachowania proporcji: dla obrazu, który już jest „ściśnięty” jak oryginalne logo WIWA.
 - Drobne detale i szum zwiększają rozmiar JPEG-a. Gdy jakość spada poniżej ok. 70, lepiej uprościć obraz.
-- Zanotuj `LOGO_BIN_SIZE` i oba CRC, bo przydadzą się w krokach 4–6 poniżej.
+- Zanotuj `LOGO_BIN_SIZE`. CRC służy do sprawdzenia pliku na PC albo w Linuksie (`crc32 linux_logo.jpg` w BusyBoxie). **MBoot tej płyty nie ma polecenia `crc32`** (jest na liście `help`, ale zwraca `Unknown command`, sprawdzone 2026-10-19), więc w MBoocie dane sprawdzamy porównaniem dwóch kopii w RAM (`cmp`).
 
 ### Podgląd na ekranie bez zapisu do flasha
 
@@ -89,22 +89,22 @@ echo 1 > /sys/class/vtconsole/vtcon1/bind        # powrót konsoli
    printenv LOGO_BIN_SIZE                         # na WIWA HD95: BFCE
    usb start
    spi_rdc 0x80B00000 0x70000 0x10000
-   crc32 0x80B00000 0x10000                       # oryginał WIWA: 93708F6A
    fatwrite usb 0 0x80B00000 logo_backup.bin 10000
+   fatload usb 0 0x80B10000 logo_backup.bin       # odczyt kopii z pendrive'a
+   cmp.l 0x80B00000 0x80B10000 4000               # "Total of 16384 words were the same"
    ```
    Warto też raz zrobić kopię całego flasha (4 MB): `spi_rdc 0x80000000 0 400000`, potem `fatwrite usb 0 0x80000000 flash_backup.bin 400000`.
 4. **Złóż nowy blok 64 KB w RAM:** zera i JPEG na początku:
    ```
    mw.l 0x80C00000 0 4000             # 0x4000 słów = 64 KB zer
    usb start
-   fatload usb 0 0x80C00000 linux_logo.jpg     # "60718 bytes read"
-   crc32 0x80C00000 0x10000           # = "CRC32 of the 64 KB flash block" z png2logo.py (v1: 02AB2C05)
+   fatload usb 0 0x80C00000 linux_logo.jpg     # "60718 bytes read": liczba bajtów = rozmiar pliku
    ```
 5. **Zapis do flasha:** `spi_wrc` sam kasuje blok, zapisuje i weryfikuje:
    ```
    spi_wrc 0x80C00000 0x70000 0x10000    # Erasing... Writing... Verifying...OK !!!
    spi_rdc 0x80D00000 0x70000 0x10000
-   crc32 0x80D00000 0x10000              # musi być to samo co w kroku 4
+   cmp.l 0x80C00000 0x80D00000 4000      # flash = RAM: "Total of 16384 words were the same"
    ```
 6. **Nowy rozmiar w środowisku:**
    ```
@@ -114,6 +114,9 @@ echo 1 > /sys/class/vtconsole/vtcon1/bind        # powrót konsoli
 7. **Test:** `reset`. Nowe logo powinno się pojawić od razu po włączeniu, a Linux startuje jak wcześniej (`logofix` zwraca `rc = 0x0`).
 
 Uwagi:
+- ⚠️ **`fatwrite` w tym MBoocie jest zawodny** (2026-10-19): zapis `logobak.bin` (64 KB) skończył się `Invalid FAT entry`, odczytem 2048 B i niezgodnym `cmp`, a na pendrivie nadpisał łańcuch klastrów innego pliku (`vmlinux_rgb.bin`); trzeba było `fsck.vfat`. Kopię bloku lepiej robić inaczej (pełna kopia flasha jest w `binaries/wiwa_hd95_BACKUP.BIN`; z Linuksa: `memdump 0x1FC70000 0x10000 > /mnt/fat/logo.bin`, `tools/board/memdump.c`). Jeśli już `fatwrite`, to krótka nazwa 8.3 i zawsze sprawdzenie `cmp`, a potem `fsck` na PC.
+- CRC32 oryginalnego bloku WIWA: `93708F6A`, bloku v1: `02AB2C05` (do sprawdzenia pliku na PC/w Linuksie).
+- `cmp` jest na liście `help` tak samo jak `crc32`; jeśli też okaże się niedostępne, porównanie można zrobić w Linuksie (`crc32` w BusyBoxie na pliku z pendrive'a) albo `md.l` na kilku adresach ❓.
 - `spi_wrc` wymaga adresów i długości wyrównanych do bloku kasowania (64 KB). Zapisujemy zawsze cały blok `0x70000`, nigdy więcej: następny blok (`0x80000`) to oryginalne oprogramowanie.
 - Gdyby nowe logo się nie dekodowało, MBoot nadal dochodzi do konsoli (Enter przy starcie), więc zawsze można wrócić do oryginału.
 
@@ -122,9 +125,10 @@ Uwagi:
 Skopiuj na FAT `logo_backup.bin` z kroku 3 albo `tools/bootlogo/wiwa_logo_block_0x70000.bin` (kopia tylko lokalnie, nie ma jej w publicznym repo), a potem w MBoocie:
 ```
 usb start
-fatload usb 0 0x80C00000 logo_backup.bin
-crc32 0x80C00000 0x10000              # 93708F6A
+fatload usb 0 0x80C00000 logo_backup.bin   # "65536 bytes read"
 spi_wrc 0x80C00000 0x70000 0x10000
+spi_rdc 0x80D00000 0x70000 0x10000
+cmp.l 0x80C00000 0x80D00000 4000
 setenv LOGO_BIN_SIZE BFCE
 saveenv
 ```

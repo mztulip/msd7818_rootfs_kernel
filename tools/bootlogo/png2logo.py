@@ -56,8 +56,8 @@ def main():
     block = data + bytes(SLOT - len(data))
     print(f"{a.output}: {len(data)} bytes, quality {q}")
     print(f"MBoot: setenv LOGO_BIN_SIZE {len(data):X}")
-    print(f"CRC32 of the JPEG:            {zlib.crc32(data):08X}  (crc32 0x80C00000 {len(data):X})")
-    print(f"CRC32 of the 64 KB flash block: {zlib.crc32(block):08X}  (crc32 0x80C00000 0x10000)")
+    print(f"CRC32 of the JPEG:            {zlib.crc32(data):08X}")
+    print(f"CRC32 of the 64 KB flash block: {zlib.crc32(block):08X}")
 
 
 if __name__ == "__main__":
