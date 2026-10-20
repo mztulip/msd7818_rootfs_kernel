@@ -6,7 +6,13 @@ Login on the rootfs: `root`, no password (set one with `passwd`).
 
 Kernel source: https://github.com/mztulip/linux_msd781x (branch `mstar_v6_7_rebase`),
 a fork of https://github.com/maniekx86/linux_msd781x/commits/mstar_v6_7_rebase/
-with the WIWA HD95 (MSD7818) changes listed below. Config: `wiwa_hd95_defconfig`.
+with the WIWA HD95 (MSD7818) changes listed below. Two configurations:
+`wiwa_hd95_defconfig` (rootfs on the USB stick, DTB `msd7816-test.dtb`; the
+`vmlinux.bin` here) and `wiwa_hd95_mini_defconfig` (a small kernel plus a
+squashfs rootfs that fit the box's own 4 MB SPI flash instead of the original
+firmware, DTB `msd7816-test-flash.dtb`). The kernel
+[README](https://github.com/mztulip/linux_msd781x/blob/mstar_v6_7_rebase/README.md)
+describes both, with the flash layout and build commands.
 
 Compiled using:
 
@@ -28,7 +34,7 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `tools/` | our sources: programs built on the board (`tools/board/`: framebuffer tests, audio library and `wavplay`, demod mailbox, RF scan…), bare-metal MBoot helpers and stock firmware probes (`tools/baremetal/`), serial console scripts, Ghidra scripts. See [Tools](#tools) |
 | `docs/pl/` | the full Polish working notes of the project (registers, I2C, tuner, demodulator, GOP, audio, stock firmware probes, …); index: [docs/pl/README.md](docs/pl/README.md) |
 | `docs/rf_scanner.md` | **rfscan**: RF spectrum analyzer (44–880 MHz) using the box's tuner and demodulator, drawn on the TV; example scans in `docs/rfscan_data/` |
-| `docs/getting_started.md` | step-by-step guide: backup, pendrive, boot, modules, apps, fbDOOM, sound |
+| `docs/getting_started.md` | step-by-step guide: backup, pendrive, boot, I2C and front panel, apps, fbDOOM, sound |
 | `docs/audio.md` | sound from Linux: how the two audio DSPs are started and fed (WAV player, fbDOOM sound effects) |
 | `docs/own_dsp_audio.md` | sound on HDMI from **our own SE DSP program**, without MStar code: sample format, interrupt, `own_audio.h`, 4-register init |
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
@@ -223,7 +229,7 @@ working directory layout (`binaries/`, `fbDOOM/`, …), not to this repo.
 
 Our own work in this repository (documentation, `tools/`, `logofix/`,
 `examples/`, boot logo scripts) is under the [MIT license](LICENSE). The
-kernel and modules (GPL-2.0), `bin/fbdoom` (GPL-2.0), the Buildroot rootfs
+kernel (GPL-2.0), `bin/fbdoom` (GPL-2.0), the Buildroot rootfs
 (per package licenses) and the Tux images (Larry Ewing) keep their own
 licenses; the details are in [LICENSE](LICENSE). MStar's DSP code is not
 included.
