@@ -114,6 +114,16 @@ latency). Build it with `make NOSDL=1 MSTAR_SOUND=1 MSTAR_AUDIO_DIR=…`. The
 prebuilt `bin/fbdoom` in this repo is the version **without** sound, because
 a binary with sound would contain MStar's DSP code.
 
+## Without MStar code: our own SE program
+
+Since 2026-10-20 there is a second path that needs **no MStar DSP code**:
+our own program for the SE DSP takes the HDMI output interrupt and writes
+24-bit samples that Linux puts into its data memory through IDMA
+(`tools/dsp/pcm.s`, `tools/board/own_audio.h`, same API as `mstar_audio.h`).
+The audio block needs only 4 register writes from the stock init table.
+HDMI only so far. fbDOOM with sound built on it: `bin/fbdoom_sound`. Details:
+[own_dsp_audio.md](own_dsp_audio.md).
+
 ## Ideas for later
 
 - **Hardware MP3:** load the DEC MP3 decoder (`0x07`) instead of xPCM and

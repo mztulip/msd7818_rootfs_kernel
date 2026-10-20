@@ -340,3 +340,12 @@ Uwaga: po programie skompilowanym tuż przed odcięciem zasilania zostaje uszkod
 - Do potwierdzenia: pierwsze uruchomienie po pełnym odcięciu zasilania.
 - Działa (2026-10-15): Doom z dźwiękiem na HDMI i SCART (`fbDOOM/fbdoom/i_mstarsound.c`, commit `cf08a57`). Brak dalszych komunikatów po `I_MStar_InitSound` to nie zawieszenie, tylko normalne zachowanie.
 - Później: sprzętowe MP3 (dekoder DEC 0x07, plan w `docs/dzwiek_uzycie.md`), muzyka w Doomie (OPL), rezerwacja pamięci DSP w DTS.
+
+## Własny program DSP zamiast firmware'u MStara (2026-10-20) ✅
+
+Sprawdzone na płycie, z pomiarem mikrofonem komputera (szczegóły i przebieg: `dsp_re/README.md`, sekcja „Sesja 2026-10-20 (trzecia)”).
+
+- **Dźwięk na HDMI bez kodu MStara:** `dsp_re/own/pcm.s` (nasz program SE) + `tools/board/own_audio.h` (to samo API co `mstar_audio.h`: `maudio_open/write/close`, tylko 48 kHz). fbDOOM: `make clean; make NOSDL=1 OWN_SOUND=1`.
+- **Sprzęt:** przerwanie slotu `0x08` SE raz na ramkę wyjścia HDMI (48 kHz); potwierdzenie = odczyt `DM(0x817F)` i dwa zapisy z instrukcją pomiędzy; próbka = słowo **24-bit ze znakiem** w `DM(0x8060)` (L) i `DM(0x8061)` (P), czyli PCM 16-bit `<< 8`. Rejestry i DM SE mają 24 bity; DM to `0x0000–0x2FFF`.
+- **Dane z Linuksa:** pierścień w DM SE pisany przez IDMA (`0x112A84` adres `| 0x8000`, dane `0x112A82/83`), ok. 2,2 mln słów/s; DSP podaje pozycję w skrzynce `0x112DE0`.
+- **Minimalny init bloku audio** po zimnym starcie (bisekcja tabeli `MDrv_AUDIO_WriteInitTable`, 192 wpisy): reset `0x112C00`, `0x110C80 = 0x0E`, `0x112CA4 = 0xFF`, `0x112C48 |= 0x80`, `0x112CB1 |= 0x04`, włączenie (`0x112D31`, `0x112B42`), potem ścieżka HDMI jak w `hdmi_audio_on()`. Bez initu IDMA nie działa i jest cisza.

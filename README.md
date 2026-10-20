@@ -32,8 +32,10 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `docs/rf_scanner.md` | **rfscan**: RF spectrum analyzer (44–880 MHz) using the box's tuner and demodulator, drawn on the TV; example scans in `docs/rfscan_data/` |
 | `docs/getting_started.md` | step-by-step guide: backup, pendrive, boot, modules, apps, fbDOOM, sound |
 | `docs/audio.md` | sound from Linux: how the two audio DSPs are started and fed (WAV player, fbDOOM sound effects) |
+| `docs/own_dsp_audio.md` | sound on HDMI from **our own SE DSP program**, without MStar code: sample format, interrupt, `own_audio.h`, 4-register init |
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
 | `bin/fbdoom` | fbDOOM with double buffering, fast drawing and serial-console controls (source: https://github.com/mztulip/fbDOOM) |
+| `bin/fbdoom_sound` | the same fbDOOM **with sound effects** through our own DSP program (`OWN_SOUND=1`, no MStar code; HDMI) |
 | `examples/fbflip.c` | double buffering example and test for `/dev/fb0` (build on the board: `gcc -O2 -o fbflip fbflip.c`) |
 | `bootlogo/` | custom MBoot boot logo: Linux logo, `png2logo.py` (any picture -> logo), flashing guide. See [bootlogo/README.md](bootlogo/README.md) |
 
@@ -43,6 +45,13 @@ Sound works from Linux userspace (test tones, WAV files, fbDOOM sound
 effects; HDMI and SCART at the same time) by driving the SoC's two audio
 DSPs with the DSP code of the original firmware. The DSP code is MStar's
 and is not included. See [docs/audio.md](docs/audio.md).
+
+**New: sound without MStar code.** Our own small program for the SE DSP
+(`tools/dsp/pcm.s`) plays PCM from Linux on HDMI, with `tools/board/own_audio.h`
+(same API as `mstar_audio.h`) and a 4-register init instead of the stock
+tables. fbDOOM with sound built on it is in `bin/fbdoom_sound`. See
+[docs/own_dsp_audio.md](docs/own_dsp_audio.md). The SCART output is not done
+with it yet.
 
 ## What is new in this kernel
 

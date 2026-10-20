@@ -30,6 +30,7 @@ Każda informacja ma oznaczenie pewności:
 | [demodulator_if.md](demodulator_if.md) | Tor IF → ADC → demodulator DVB-T (8051 + DSP), skrzynka pocztowa z Linuksa, rejestr sygnału `0x2098`, widmo RF przemiatane (`rfscan`) |
 | [ir_pilot.md](ir_pilot.md) | Pilot IR: dekoder w PM, firmware PM51, rejestry, drogi pod Linuksem |
 | [audio.md](audio.md) | Blok audio (Vivaldi/MAD, 2× DSP), czy MIPS może grać dźwięk |
+| [wlasny_dsp_dzwiek.md](wlasny_dsp_dzwiek.md) | Dźwięk na HDMI z własnego programu DSP SE, bez kodu MStara: format próbki (24 bit w `0x8060/1`), potwierdzenie przerwania, `own_audio.h`, minimalny init (4 rejestry), fbDOOM `OWN_SOUND=1` |
 | [grafika_gop.md](grafika_gop.md) | GOP: rejestry bufora, skalowania i vsync; plan lepszego framebuffera |
 | [skanowanie_kanalow.md](skanowanie_kanalow.md) | Jak oryginalny system szuka kanałów DVB-T: tabele częstotliwości, maszyna stanów skanu, lock demodulatora, tablice PAT/PMT/SDT/NIT |
 | [plan_mini_system.md](plan_mini_system.md) | Plan (nierozpoczęty): mini Linux z fbDOOM w flashu SPI zamiast oryginalnego systemu |
