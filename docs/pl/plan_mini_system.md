@@ -53,7 +53,7 @@ W Linuksie wszystkie partycje są tylko do odczytu. Kernel i rootfs wgrywa MBoot
 
 ## Kernel `kernel_mini`
 
-Gałąź `kernel_mini` w repo `linux_msd781x`, w osobnym katalogu roboczym `linux_mini/` (git worktree), więc pełny kernel #13 w `linux_msd781x/` zostaje nietknięty. Konfiguracja: `arch/mips/configs/wiwa_hd95_mini_defconfig`.
+Od 2026-10-20 jedna gałąź `mstar_v6_7_rebase` w repo `linux_msd781x` ma oba warianty (gałąź `kernel_mini` wskazuje na ten sam commit). Pełny kernel: `wiwa_hd95_defconfig` + `msd7816-test.dtb` (rootfs na pendrivie), budowany w `linux_msd781x/`. Mały: `arch/mips/configs/wiwa_hd95_mini_defconfig` + `msd7816-test-flash.dtb` (rootfs squashfs we flashu, układ partycji niżej), budowany w osobnym katalogu roboczym `linux_mini/` (git worktree, bo każdy config ma swój `.config`). Wspólny opis płytki jest w `msd7816-test.dtsi`; oba DTS różnią się tylko `bootargs` i partycjami flasha. Opis w `README.md` kernela.
 
 **Co ma:** konsola szeregowa, framebuffer `mstar-gopfb` z konsolą na ekranie (font TER16x32), USB (pendrive i klawiatura), I2C (tuner), panel przedni, `/dev/mem` (dźwięk przez DSP), vfat, ext2, squashfs, MTD + sterownik flasha `spi-mstar-isp` (+ `spi-nor`).
 
@@ -68,8 +68,8 @@ Dalsze możliwe cięcia (odłożone, bo budżet się mieści): `LD_DEAD_CODE_DAT
 make ARCH=mips CROSS_COMPILE=mipsel-linux-gnu- -j6
 make ARCH=mips CROSS_COMPILE=mipsel-linux-gnu- dtbs
 cp vmlinux vmlinux_dtb
-mipsel-linux-gnu-objcopy --update-section .appended_dtb=arch/mips/boot/dts/mstar/msd7816-test.dtb vmlinux_dtb
-mipsel-linux-gnu-objcopy -O binary vmlinux_dtb vmlinux_mini.bin
+mipsel-linux-gnu-objcopy --update-section .appended_dtb=arch/mips/boot/dts/mstar/msd7816-test-flash.dtb vmlinux_dtb
+mipsel-linux-gnu-objcopy -O binary vmlinux_dtb vmlinux_flash.bin   # rootfs we flashu (mtdblock4)
 ```
 Start zawsze przez `go 0x80000000` (opcja `CONFIG_BOOT_RAW` stawia na początku obrazu skok do właściwego wejścia).
 
