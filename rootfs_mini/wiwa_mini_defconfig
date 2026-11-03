@@ -1,0 +1,25 @@
+# Minimal read-only rootfs (squashfs) for the WIWA HD95 SPI flash,
+# build_manual.md. Paths are relative to the Buildroot directory, which sits
+# next to this repo. Build (about 30-60 min the first time):
+#   cd buildroot && make O=../rootfs_mini_out BR2_DEFCONFIG=../msd7818_rootfs_kernel/rootfs_mini/wiwa_mini_defconfig defconfig
+#   make O=../rootfs_mini_out -j8
+BR2_mipsel=y
+BR2_mips_32r2=y
+BR2_MIPS_SOFT_FLOAT=y
+BR2_OPTIMIZE_S=y
+BR2_STATIC_LIBS=y
+BR2_KERNEL_HEADERS_6_6=y
+BR2_TOOLCHAIN_BUILDROOT_MUSL=y
+BR2_TARGET_GENERIC_HOSTNAME="msd7818"
+BR2_TARGET_GENERIC_ISSUE="MSD7818 mini Linux"
+BR2_TARGET_GENERIC_ROOT_PASSWD=""
+BR2_TARGET_GENERIC_GETTY_PORT="console"
+BR2_TARGET_GENERIC_GETTY_TERM="vt100"
+# BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW is not set
+BR2_SYSTEM_DHCP=""
+BR2_ROOTFS_OVERLAY="../msd7818_rootfs_kernel/rootfs_mini/overlay"
+# BR2_TARGET_ROOTFS_TAR is not set
+BR2_TARGET_ROOTFS_SQUASHFS=y
+BR2_TARGET_ROOTFS_SQUASHFS4_XZ=y
+BR2_TARGET_ROOTFS_SQUASHFS_BS_1024K=y
+BR2_ROOTFS_POST_BUILD_SCRIPT="../msd7818_rootfs_kernel/rootfs_mini/post_build.sh"

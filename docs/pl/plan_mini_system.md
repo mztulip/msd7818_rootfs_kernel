@@ -81,17 +81,21 @@ Osobna konfiguracja Buildroota, budowana do `rootfs_mini/output` (główny Build
 
 **Zawartość:**
 - BusyBox, statycznie z musl (1,2 MB przed kompresją);
-- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem przez **nasz własny program DSP** (`OWN_SOUND=1`, `own_audio.h`, bez kodu MStara; 494 KB; od 2026-10-20, wcześniej 581 KB z kodem DSP MStara), dźwięk tylko na HDMI;
+- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem przez **nasz własny program DSP** (`OWN_SOUND=1`, `own_audio.h`, bez kodu MStara; 494 KB; od 2026-10-20, wcześniej 581 KB z kodem DSP MStara), dźwięk tylko na HDMI. **Od obrazu z 2026-11-03** (`flash_images/rootfs_20261103.img`): także **muzyka** (OPL2, własny `opl2.c`, fbDOOM `master` 2904f62), 562 KB, ✅ sprawdzony z pendrive'a (`sda3`), **jeszcze nie zapisany do flasha**;
 - `/home/freedoom_e1m1.wad`: okrojony Freedoom (jedna mapa E1M1, BSD-3, `tools/doom/mkminiwad.py`) z `FREEDOOM_COPYING.txt` i plikami `FREEDOOM_CREDITS*.txt` obok (wymóg licencji); do 2026-10-20 był tu `doom1.wad`; polecenie `doom` uruchamia grę;
 - **root bez hasła, logowany automatycznie** na konsoli szeregowej i na ekranie (`tty1`), od 2026-10-20 (niżej: „Logowanie”);
 - `/tmp` i `/run` w RAM (tmpfs), reszta tylko do odczytu;
 - `S20usb`: montuje pierwszą partycję FAT pendrive'a pod `/mnt/usb`, jeśli jest.
 
-**Rozmiar obrazu:** 2 011 136 B (od 2026-10-20; wcześniej 2 064 384 B; squashfs, XZ, blok 1 MB, partycja ma 2 097 152 B). Największy jest WAD (`freedoom_e1m1.wad` 4,1 MB, po kompresji ok. 1,32 MB; dawny `doom1.wad` 4,2 MB / 1,37 MB). Blok 1 MB zamiast domyślnych 128 KB oszczędza ok. 50 KB. `post_build.sh` usuwa `lib/libc.a` (3,2 MB, Buildroot kopiuje go przy statycznym musl), skrypty sieci, crona i `seedrng`.
+**Rozmiar obrazu:** 2 039 808 B (2026-11-03, z muzyką; zapas 57 KB); 2 011 136 B (od 2026-10-20; wcześniej 2 064 384 B; squashfs, XZ, blok 1 MB, partycja ma 2 097 152 B). Największy jest WAD (`freedoom_e1m1.wad` 4,1 MB, po kompresji ok. 1,32 MB; dawny `doom1.wad` 4,2 MB / 1,37 MB). Blok 1 MB zamiast domyślnych 128 KB oszczędza ok. 50 KB. `post_build.sh` usuwa `lib/libc.a` (3,2 MB, Buildroot kopiuje go przy statycznym musl), skrypty sieci, crona i `seedrng`.
 
 Od 2026-10-20 **obraz nie zawiera kodu MStara**: fbDOOM gra przez nasz program DSP, a WAD to Freedoom (BSD-3, notka licencji w `/home`). Dawny obraz (z kodem DSP MStara i `doom1.wad`) i jego pliki leżą w `rootfs_mini/old_overlay_mstar/`; tych nie wolno publikować.
 
 **Logowanie (od 2026-10-20).** `BR2_TARGET_GENERIC_ROOT_PASSWD=""` w `rootfs_mini/wiwa_mini_defconfig` daje w `/etc/shadow` `root::` (brak hasła). W `overlay/etc/inittab` getty na `console` i `tty1` ma `-n -l /usr/bin/autologin` (bez pytania o nazwę, zamiast `/bin/login` uruchamia skrypt), a `overlay/usr/bin/autologin` robi `exec /bin/login -f root` (zalogowany bez pytania). Po starcie od razu jest powłoka `#`, w logu `login[..]: root login on 'console'` i `'tty1'`. Po wylogowaniu (`exit`) init uruchamia getty od nowa i root loguje się znowu. `tools/serial/linux_login.py` rozpoznaje autologowanie (komunikat `root login on` i znak `#`); w systemie z pendrive'a dalej loguje się normalnie (login i hasło).
+
+## Publiczne obrazy i instrukcja (2026-11-03)
+
+W repo `msd7818_rootfs_kernel`: `flash/` (`kernel.img`, `logofix.img`, `rootfs.img` = `rootfs_20261103.img`, `md5sums.txt`), `bin/fbdoom_music`, `rootfs_mini/` (defconfig ze ścieżkami względnymi do `../msd7818_rootfs_kernel`, overlay bez `fbdoom` i WAD-u, `post_build.sh`), `tools/flash/mkflash.py` (LZMA + CRC32 dla `LzmaDec`, dopełnianie `0xFF`; odtwarza wszystkie trzy obrazy bit w bit), `build_manual.md` (budowa ze źródeł) i sekcja „Flash system” w `README.md` (zapis z MBoota z pendrive'a FAT32, bez TFTP). Powrót do oryginału z kopii (`spi_wrc 0x80C80000 0x80000 0x360000`) opisany, ale niesprawdzony ❓.
 
 ## Test bez zapisu do flasha (zrobione 2026-10-19)
 

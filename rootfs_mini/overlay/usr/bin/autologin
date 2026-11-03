@@ -1,0 +1,3 @@
+#!/bin/sh
+# Called by getty -n -l (/etc/inittab): log root in without asking (root has no password).
+exec /bin/login -f root

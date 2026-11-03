@@ -32,8 +32,14 @@ It does NOT cover these files, which keep their own licenses:
 
 - vmlinux.bin and modules/*.ko: the Linux kernel, GPL-2.0.
   Source: https://github.com/mztulip/linux_msd781x (branch mstar_v6_7_rebase)
-- bin/fbdoom: fbDOOM / Chocolate Doom, GPL-2.0.
+- bin/fbdoom, bin/fbdoom_sound, bin/fbdoom_music: fbDOOM / Chocolate Doom,
+  GPL-2.0 (fbdoom_music also contains fmopl.c from QEMU, LGPL-2.1).
   Source: https://github.com/mztulip/fbDOOM
+- flash/kernel.img: the Linux kernel (mini config), GPL-2.0, same source.
+- flash/rootfs.img: a Buildroot root filesystem (BusyBox GPL-2.0, musl MIT,
+  fbdoom_music as above) with a cut-down Freedoom IWAD (BSD-3-Clause,
+  rootfs_mini/overlay/home/FREEDOOM_COPYING.txt). Buildroot sources:
+  https://buildroot.org; build description: build_manual.md.
 - rootfs_gcc.7z: a Buildroot root filesystem; every package in it has its
   own license (GPL, LGPL, MIT, BSD, ...). Sources: https://buildroot.org
 - The Tux images (bootlogo/Tux.svg, the Tux parts of the boot logos and

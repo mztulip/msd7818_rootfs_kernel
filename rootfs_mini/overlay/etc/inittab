@@ -1,0 +1,19 @@
+# /etc/inittab of the WIWA HD95 mini system (read-only squashfs root)
+::sysinit:/bin/mount -t proc proc /proc
+::sysinit:/bin/mkdir -p /dev/pts /dev/shm
+::sysinit:/bin/mount -a
+::sysinit:/bin/mkdir -p /run/lock/subsys
+null::sysinit:/bin/ln -sf /proc/self/fd /dev/fd
+null::sysinit:/bin/ln -sf /proc/self/fd/0 /dev/stdin
+null::sysinit:/bin/ln -sf /proc/self/fd/1 /dev/stdout
+null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
+::sysinit:/bin/hostname -F /etc/hostname
+::sysinit:/etc/init.d/rcS
+
+# serial console and the framebuffer console (tty1): root is logged in automatically
+# (getty -n: no login prompt, -l: run /usr/bin/autologin = login -f root)
+console::respawn:/sbin/getty -n -l /usr/bin/autologin -L console 0 vt100
+tty1::respawn:/sbin/getty -n -l /usr/bin/autologin -L tty1 115200 linux
+
+::shutdown:/etc/init.d/rcK
+::shutdown:/bin/umount -a -r

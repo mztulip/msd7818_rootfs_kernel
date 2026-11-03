@@ -1,0 +1,20 @@
+#!/bin/sh
+# Mount the first FAT partition of a USB stick on /mnt/usb, if there is one.
+# After a cold start the stick can take several seconds to show up, so wait
+# up to 15 s in the background instead of delaying the boot.
+case "$1" in
+start)
+	(
+	for i in $(seq 15); do
+		for d in /dev/sda1 /dev/sda; do
+			[ -b $d ] && mount -t vfat -o noatime $d /mnt/usb 2>/dev/null && {
+				echo "USB stick $d mounted on /mnt/usb" > /dev/console; exit 0; }
+		done
+		sleep 1
+	done
+	) &
+	;;
+stop)
+	umount /mnt/usb 2>/dev/null
+	;;
+esac

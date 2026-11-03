@@ -1,0 +1,7 @@
+#!/bin/sh
+# Start fbDOOM with sound effects (our own SE DSP program, no MStar code) on the
+# Freedoom E1M1 IWAD (modified Freedoom: Phase 1, BSD-3, /home/FREEDOOM_COPYING.txt).
+# From the serial console the keys come from the terminal; with a USB keyboard
+# run it on its own VT:
+#   openvt -c 2 -s -w -- doom
+cd /home && exec ./fbdoom -iwad freedoom_e1m1.wad "$@"

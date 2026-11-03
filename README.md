@@ -4,6 +4,11 @@
 from an unmodified box to Linux, fbDOOM and sound, step by step.
 Login on the rootfs: `root`, no password (set one with `passwd`).
 
+**Linux in the box's own flash, no pendrive needed:** ready images in `flash/`,
+written from the MBoot prompt with a FAT32 pendrive, see
+[Flash system](#flash-system-linux-in-the-boxs-own-flash). How to build them
+yourself (kernel, rootfs, fbDOOM): [build_manual.md](build_manual.md).
+
 Kernel source: https://github.com/mztulip/linux_msd781x (branch `mstar_v6_7_rebase`),
 a fork of https://github.com/maniekx86/linux_msd781x/commits/mstar_v6_7_rebase/
 with the WIWA HD95 (MSD7818) changes listed below. Two configurations:
@@ -40,6 +45,11 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
 | `bin/fbdoom` | fbDOOM with double buffering, fast drawing and serial-console controls (source: https://github.com/mztulip/fbDOOM) |
 | `bin/fbdoom_sound` | the same fbDOOM **with sound effects** through our own DSP program (`OWN_SOUND=1`, no MStar code; HDMI) |
+| `bin/fbdoom_music` | fbDOOM with sound effects **and music** (OPL2 emulation, `opl2.c`), static (musl), runs on both rootfs; the one in the flash system |
+| `flash/` | **flash system images**: `kernel.img` (mini kernel, LZMA), `logofix.img`, `rootfs.img` (squashfs: BusyBox, `fbdoom_music`, Freedoom E1M1), `md5sums.txt`. See [Flash system](#flash-system-linux-in-the-boxs-own-flash) |
+| `build_manual.md` | how to build the flash images from source: mini kernel, Buildroot rootfs, fbDOOM, IWAD |
+| `rootfs_mini/` | Buildroot config, overlay and post-build script of the flash rootfs |
+| `tools/flash/mkflash.py` | packs the kernel for MBoot's `LzmaDec` (LZMA + CRC32) and pads the images to their partitions |
 | `examples/fbflip.c` | double buffering example and test for `/dev/fb0` (build on the board: `gcc -O2 -o fbflip fbflip.c`) |
 | `bootlogo/` | custom MBoot boot logo: Linux logo, `png2logo.py` (any picture -> logo), flashing guide. See [bootlogo/README.md](bootlogo/README.md) |
 
@@ -139,6 +149,122 @@ setenv bootcmd spi_rdc 0x80B00000 0x8001C 0x289977\;LzmaDec 0x80B00000 0x289977 
 saveenv
 ```
 
+## Flash system: Linux in the box's own flash
+
+Instead of booting from the pendrive, the box can run a small Linux from its
+own 4 MB SPI flash, in place of the original firmware:
+- it starts in about 10 s, and root is logged in automatically on the serial console and on the TV (`tty1`);
+- `doom` starts fbDOOM with sound effects and music on HDMI (Freedoom E1M1);
+- the root filesystem is read-only squashfs, with `/tmp` in RAM, so after a reset the system is always clean;
+- a pendrive, if present, is mounted on `/mnt/usb` (first FAT partition).
+
+**This erases the original firmware** (flash `0x80000`–`0x3E0000`). MBoot,
+the boot logo and the MBoot environment are not touched, so the
+`<< MStar >>#` prompt stays available. **Make a full backup of the flash
+first** ([getting_started.md, step 1](docs/getting_started.md#1-get-the-bootloader-prompt-and-back-up-the-flash)).
+
+No network or TFTP is needed. MBoot reads files from a FAT32 pendrive
+(`fatload usb`) into RAM, and `spi_wrc` erases, writes and verifies the flash
+from RAM.
+
+Flash layout:
+
+| Offset | Size | Linux partition | Content | File |
+|---|---|---|---|---|
+| `0x000000` | 448 KB | `mtd0` boot | sboot + MBoot (unchanged) | |
+| `0x070000` | 64 KB | `mtd1` logo | boot logo (unchanged) | |
+| `0x080000` | 1216 KB used (1344 KB partition) | `mtd2` kernel | mini kernel, LZMA | `flash/kernel.img` |
+| `0x1D0000` | 64 KB | `mtd3` logofix | `logofix` | `flash/logofix.img` |
+| `0x1E0000` | 2 MB | `mtd4` rootfs | squashfs | `flash/rootfs.img` |
+| `0x3E0000` | 128 KB | `mtd5` env | MBoot environment (unchanged) | |
+
+### 1. Pendrive
+
+Copy `flash/kernel.img`, `flash/logofix.img` and `flash/rootfs.img` to the
+first (FAT32) partition of a pendrive and check them with
+`md5sum -c flash/md5sums.txt`. Put the pendrive into the box.
+
+### 2. Write the flash from MBoot
+
+Serial console 115200 8N1; press Enter during power-on to get the
+`<< MStar >>#` prompt. First switch the watchdog off, otherwise the board can
+reset in the middle of writing:
+```
+mw.w 0xBF006040 0 1
+mw.w 0xBF006010 0 1
+mw.w 0xBF006014 0 1
+usb start
+```
+Then, for each image, load it to RAM, write it, read it back and compare:
+```
+fatload usb 0 0x80C00000 kernel.img
+spi_wrc 0x80C00000 0x80000 0x130000
+spi_rdc 0x81000000 0x80000 0x130000
+cmp.l 0x80C00000 0x81000000 4C000
+
+fatload usb 0 0x80C00000 logofix.img
+spi_wrc 0x80C00000 0x1D0000 0x10000
+spi_rdc 0x81000000 0x1D0000 0x10000
+cmp.l 0x80C00000 0x81000000 4000
+
+fatload usb 0 0x80C00000 rootfs.img
+spi_wrc 0x80C00000 0x1E0000 0x200000
+spi_rdc 0x81000000 0x1E0000 0x200000
+cmp.l 0x80C00000 0x81000000 80000
+```
+- `spi_wrc` must end with `Verifying...OK`.
+- Each `cmp.l` must report that all words were the same: 311296 for the kernel, 16384 for logofix, 524288 for the rootfs.
+- If one fails, write that image again before going on.
+
+### 3. Automatic start
+
+MBoot silently cuts command lines after about 128 characters, so the start
+is split into variables. Each line below is shorter than that:
+```
+setenv wdoff mw.w 0xBF006040 0 1\;mw.w 0xBF006010 0 1\;mw.w 0xBF006014 0 1\;
+setenv flashlogo spi_rdc 0x80F00000 0x1D0000 0x10000\;go 0x80F00000\;
+setenv flashboot spi_rdc 0x80B00000 0x80000 0x130000\;LzmaDec 0x80B00000 0x1285DA 0x80000000 0x81000000\;go 0x80000000\;
+setenv bootcmd run wdoff\;usb start\;run flashlogo\;run flashboot\;
+saveenv
+reset
+```
+- `printenv` should show the four variables with plain `;`.
+- `0x1285DA` is the LZMA size of the published `kernel.img`. A kernel you build yourself has a different size: `tools/flash/mkflash.py` prints it ([build_manual.md](build_manual.md)).
+- If the size is wrong, `LzmaDec` reports a CRC error, rewrites the environment and resets; the MBoot prompt still works.
+- `usb start` is needed even without a pendrive: the kernel does not power up the USB PHY itself. Without a pendrive it only prints an error, and the start goes on.
+
+After `reset` you see the boot logo, then MBoot prints `CRC check success`,
+and after about 10 s the shell (`#`) appears on the serial console and on the
+TV. Type `doom` to play: keys come from the serial terminal, or use a USB
+keyboard with `openvt -c 2 -s -w -- doom`.
+
+The pendrive system from [Booting](#booting) still works: press Enter at
+power-on, then `run wdoff`, then `run bootlinux` (if you saved `bootlinux`).
+
+### Updating one part
+
+Each image can be rewritten on its own with its lines from step 2. For example, a
+new rootfs needs only the `rootfs.img` block; the kernel and the environment
+stay. After a new kernel, also change the size in `flashboot`.
+
+### Back to the original firmware
+
+Write the original contents back from your backup (`backup.bin` from step 1
+of getting_started, 4 MB) and restore the stock `bootcmd`:
+```
+mw.w 0xBF006040 0 1
+mw.w 0xBF006010 0 1
+mw.w 0xBF006014 0 1
+usb start
+fatload usb 0 0x80C00000 backup.bin
+spi_wrc 0x80C80000 0x80000 0x360000
+setenv bootcmd spi_rdc 0x80B00000 0x8001C 0x289977\;LzmaDec 0x80B00000 0x289977 0x80000180 0x81000000\;go 0x80000224\;
+saveenv
+```
+The backup is loaded at `0x80C00000`, so flash offset `0x80000` is at RAM
+`0x80C80000`, and `0x360000` bytes reach up to the environment at
+`0x3E0000`. This way back has not been tried on our box yet.
+
 ## I2C and front panel
 
 Both drivers are built in. I2C bus 0 is the MxL5007T tuner at `0x60`; the
@@ -221,6 +347,8 @@ VCEI exceptions      : not available
 | `tools/serial/` | Python (pyserial) helpers for the UART console: run commands, catch the MBoot prompt, log in, load a probe into the stock firmware |
 | `tools/ghidra/`, `tools/*.py` | Ghidra scripts (8051 analysis, exports) and BSP function matching (`match_libs.py`) |
 | `tools/bootlogo/` | boot logo generators (v1 Tux, v2 retro) |
+| `tools/flash/mkflash.py` | flash images: kernel LZMA + CRC32 for `LzmaDec`, padding (see [build_manual.md](build_manual.md)) |
+| `tools/opl_host/` | host test of the fbDOOM music: renders a song with `opl2.c`, fmopl or Nuked OPL3 (reference) to raw PCM; `oplplay … rt` on the board loads the CPU like the game's music |
 
 Most paths inside the scripts and the Polish notes refer to the original
 working directory layout (`binaries/`, `fbDOOM/`, …), not to this repo.
