@@ -10,7 +10,7 @@ Oznaczenia: ✅ zmierzone na płycie, 🔍 wynika z kodu lub schematu, ❓ hipot
 |---|---|---|
 | LNA i RF w MxL5007T | brak rejestru w sterowniku Linuksa; opis znaleziony w sieci podaje, że układ reguluje RF sam, bez demodulatora ❓ | nie znaleziono (przeszukano tylko część rejestrów) |
 | **Wzmocnienie w MxL5007T** | rejestr `0x78` (nieopisany), domyślnie `0x18` | **działa ✅, ok. 18 dB, klawisze `,` `.`** |
-| Wejście `VAGC` tunera, na schemacie z pinu `IF_AGC` SoC 🔍 | pętla ARW demodulatora, wymuszenie pinu | bez efektu ✅ (niżej) |
+| **Pętla ARW demodulatora → tuner** (`VAGC`, na schemacie z pinu `IF_AGC` SoC 🔍) | uruchamia ją `tuner_tune` w MBoot | **działa ✅, ale tylko obniża wzmocnienie** (niżej) |
 | Pad `IF_AGC` w SoC | RIU `0x101E3A` bit 0 (fiz. `0x1F203C74`), `HAL_DMD_IFAGC_Tristate` 🔍 | przełączenie bez efektu ✅ |
 | Pad `RF_AGC` w SoC | ten sam rejestr, bit 1 🔍 | przełączenie bez efektu ✅ |
 | **Wzmocnienie ADC w SoC** | RIU `0x112816` (fiz. `0x1F22502C`), po 4 bity na kanał, po `tuner_init` `0x0505` | **działa ✅** |
@@ -89,7 +89,20 @@ Wniosek: powyżej `0x18` wzmocnienie prawie nie rośnie (ok. 1,7 dB, do `0x1A`),
 
 **Bez efektu ✅:** poziomy wyjścia IF i tryb kablowy (`09`, `0A`, `0B`), tryby `06` (ISDB-T, ATSC), przelot `04` (po resetie `0`, w działającym układzie odczyt `1`), pozostałe bity rejestrów `OVERRIDE`. Pojedynczy odczyt `30=00` dał −4,9 dB, ale w powtórce nic ❓. `0x78` = `0x38` gubi prążek ❓. Rejestrów `0x1F`–`0x22` skan nie objął, bo `tune()` zapisuje je od nowa.
 
-**Pętla ARW demodulatora ✅:** w MBoocie `tuner_init`, `tuner_demodtype 1`, `tuner_tune 474000 3` (bez blokady, `FE un-lock`) uruchamiają ją, a po starcie Linuksa dalej działa: `0x2111` = `0x90`, referencja `0x2113` = `0x96`, po selektorze `0x2122` = 3 słowo `0x2124/25` zmienia się (`0xD02B`, `0xD073`), a po przestrojeniu nasyca się na `0xFF00`. Szum, prążek i pilot są takie same jak bez niej. Wymuszanie pinu (rejestr `0x112830`, `0x0011`, `0x0031`, `0x0010`, `0x0030`, `0x0001`; układ bitów z MSB124x 🔍) też nic nie zmienia. Tuner nie reaguje na ten pin albo pin nie dochodzi do tunera; bez pomiaru napięcia na `VAGC` tego nie rozstrzygniemy ❓.
+**Pętla ARW demodulatora działa i steruje tunerem ✅.** W MBoocie `tuner_init`, `tuner_demodtype 1`, `tuner_tune 474000 3` (bez blokady, `FE un-lock`) uruchamiają ją, a po starcie Linuksa pracuje dalej: `0x2111` = `0xB0` lub `0x90`, referencja `0x2113` = `0x96`, po selektorze `0x2122` = 3 słowo `0x2124/25` nadąża za sygnałem. Porównanie z samym `tuner_init` (tam `0x2111`–`0x2113` = 0 i słowo = 0):
+
+| Strojenie MHz | Szum bez ARW / z ARW dB | Najsilniejszy prążek bez ARW / z ARW dB | Słowo ARW |
+|---|---|---|---|
+| 94 | −45,7 / −45,6 | −22,7 / −22,8 | `0xFF00` |
+| 214 | −43,1 / −52,9 | −3,6 / −13,8 | `0xCB98` |
+| 142 | −42,8 / −47,7 | −14,1 / −15,2 | `0xD0BC` |
+| 430 | −41,4 / −44,2 | −15,1 / −18,6 | `0xD43A` |
+| 740 | −43,3 / −54,8 | −18,9 / −38,4 | `0xC781` |
+| 600 | −41,7 / −43,2 | −26,8 / −29,6 | `0xD506` |
+
+Przy silnym sygnale w paśmie pętla obniża wzmocnienie do ok. 10–20 dB, a słaby sygnał zostawia ją na `0xFF00`, czyli na tym samym poziomie co bez ARW. Wniosek: **bez ARW tuner pracuje już z pełnym wzmocnieniem**, więc ARW nie doda wzmocnienia, a tylko chroni przed przesterowaniem. Na pełnym zakresie z ARW widać dołki szumu wokół silnych prążków; w `specan` przemiatanie bez ARW ich nie ma.
+
+Wcześniejszy zapis „tuner nie reaguje na pin” był błędny: test był prowadzony przy słabym sygnale. Wymuszanie pinu (rejestr `0x112830`, wartości `0x0011`, `0x0031`, `0x0010`, `0x0030`, `0x0001`; układ bitów z MSB124x 🔍) nic nie zmieniło, ale to wymuszenie nadal nie jest potwierdzone ❓. Pętli ARW nie da się jeszcze sterować referencją z Linuksa (nie próbowano).
 
 Tuner: `0xB6`, `0xB8` zmieniają się przy każdym odczycie i nie widać w nich związku z sygnałem ❓; `0xB5` zmienia się z pasmem; tryb kablowy odbija się w `0xB1`, `0xCF`–`0xD1`.
 
@@ -98,7 +111,7 @@ Oryginalny firmware (`binaries/ghidra_stock/all.c`, `FUN_80180348`, `FUN_801a980
 ## Co dalej
 
 - Skan pozostałych rejestrów tunera może znaleźć sterowanie LNA ❓.
-- Pomiar napięcia na `VAGC` multimetrem przy pracującej pętli i przy wymuszaniu pinu.
+- Referencja `0x2113` jako ręczna regulacja przez ARW (nie próbowano; przyda się tylko przeciw przesterowaniu).
 - Największy spodziewany zysk: lepsza antena ❓.
 
 Uwaga: dwie jednoczesne kopie `specan` nawzajem resetują DSP i nie potrafią wtedy wyjść nawet po `SIGTERM` (zostaje `kill -9`, a potem ręczne przywrócenie `0x101E39` i `sched_rt_runtime_us`) ✅.

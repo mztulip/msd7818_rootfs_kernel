@@ -35,7 +35,7 @@
  *   h max hold, m max/mean per column, +/- reference level (volume while listening),
  *   , . tuner gain, [ ] ADC gain (neither improves the signal to noise ratio over the default;
  *   they can only avoid clipping),
- *   b tuner filter while listening (8, 7, 6 MHz), p pause, q quit.
+ *   b tuner filter while listening (8, 7, 6 MHz), c mark the box's own spurs, p pause, q quit.
  *   Front panel: CH+/CH- marker, POWER radio on/off.
  *
  *   -F RF_KHZ starts the radio at once, -B MHZ tuner filter while listening,
@@ -1296,11 +1296,40 @@ static int db_y(int v)	/* dB * 16 to a plot row */
 static uint16_t grid_row[2][2][COLS];
 static uint8_t grid_is_h[PLOT_H];
 
+/*
+ * The box's own lines, docs/falszywe_sygnaly.md: the comb at multiples of 6 MHz (locked to the
+ * tuner crystal) in orange, the HDMI transmitter at multiples of 74.25 MHz in magenta. These
+ * are calculated positions: not every multiple really shows a line.
+ */
+#define SPUR_COMB	1
+#define SPUR_HDMI	2
+static uint8_t spur_kind[COLS];
+static int spur_marks = 1;
+
+static int near_multiple(int hz, int step, int tol)
+{
+	int r = hz % step;
+
+	return r <= tol || step - r <= tol;
+}
+
+static void spur_cols(void)
+{
+	for (int c = 0; c < COLS; c++) {
+		int width = col_hz[c + 1] - col_hz[c], mid = col_hz[c] + width / 2;
+		int tol = width > 20000 ? width : 20000;	/* a line is about 10 kHz wide on screen */
+
+		spur_kind[c] = near_multiple(mid, 6000000, tol) ? SPUR_COMB :
+			       near_multiple(mid, 74250000, tol) ? SPUR_HDMI : 0;
+	}
+}
+
 static void draw_grid(void)
 {
 	static const int steps[] = { 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000 };
 	int span_khz = (stop_hz - start_hz) / 1000, st = 100000;
 
+	spur_cols();
 	memset(grid_is_h, 0, sizeof(grid_is_h));
 	for (int y = 0; y <= DB_SPAN; y += 10) {
 		int row = y * PLOT_H / DB_SPAN;
@@ -1507,6 +1536,7 @@ static void render(void)
 	static uint16_t mix[COLS];
 	int py = -1, amin = PLOT_H, bmax = -1, tick_x = -1, mark_x = -1;
 	const uint16_t line_c = RGB(80, 230, 255), hold_c = RGB(255, 200, 40);
+	const uint16_t spur_c[3] = { line_c, RGB(255, 150, 40), RGB(255, 70, 255) };
 	const uint16_t mark_c = radio_on ? RGB(255, 80, 80) : RGB(200, 200, 80);
 
 	for (int c = 0; c < COLS; c++) {
@@ -1544,7 +1574,8 @@ static void render(void)
 			memcpy(mix, plain, sizeof(mix));
 			for (int c = 0; c < COLS; c++)
 				if (j >= top[c])
-					mix[c] = j <= bot[c] ? line_c : fill[c];
+					mix[c] = j > bot[c] ? fill[c] :
+						 spur_marks ? spur_c[spur_kind[c]] : line_c;
 			if (hold_on)
 				for (int c = 0; c < COLS; c++)
 					if (hold_y[c] == j)
@@ -1575,6 +1606,11 @@ static void render(void)
 		     marker_hz / 1e6, pilot_db, rx_db, volume, radio_bw);
 	else if (marker_set)
 		text(back, 400, 24, RGB(200, 200, 80), "MARKER %.1f MHZ  ENTER OR CLICK: LISTEN", marker_hz / 1e6);
+	if (spur_marks) {
+		text(back, 1490, 4, RGB(255, 150, 40), "6 MHZ COMB");
+		text(back, 1640, 4, RGB(255, 70, 255), "HDMI");
+		text(back, 1710, 4, RGB(255, 255, 120), "OTHER PEAK");
+	}
 	if (ptr_seen && ptr_x >= PLOT_X && ptr_x < PLOT_X + COLS)
 		text(back, 1200, 24, RGB(255, 255, 255), "CURSOR %.1f MHZ", snap_hz(ptr_x - PLOT_X) / 1e6);
 
@@ -1582,7 +1618,10 @@ static void render(void)
 		int f = col_hz[pk[i].col] + (col_hz[pk[i].col + 1] - col_hz[pk[i].col]) / 2;
 		int y = PLOT_Y + db_y(pk[i].v) - 18;
 
-		text(back, PLOT_X + pk[i].col - 36, y < PLOT_Y ? PLOT_Y : y, RGB(255, 255, 120),
+		int kind = spur_marks ? spur_kind[pk[i].col] : 0;
+
+		text(back, PLOT_X + pk[i].col - 36, y < PLOT_Y ? PLOT_Y : y,
+		     kind == SPUR_COMB ? RGB(255, 150, 40) : kind == SPUR_HDMI ? RGB(255, 70, 255) : RGB(255, 255, 120),
 		     "%.2f", f / 1e6);
 	}
 
@@ -1773,6 +1812,9 @@ static void apply_key(int k)
 	case 'r':
 		rescan = 1;
 		break;
+	case 'c':
+		spur_marks = !spur_marks;
+		break;
 	case ',':
 		tuner_gain_step(-1);
 		break;
@@ -1869,7 +1911,7 @@ static void poll_input(void)
 				{ KEY_H, 'h' }, { KEY_M, 'm' }, { KEY_EQUAL, '+' }, { KEY_MINUS, '-' },
 				{ KEY_P, 'p' }, { KEY_Q, 'q' }, { KEY_B, 'b' },
 				{ KEY_LEFTBRACE, '[' }, { KEY_RIGHTBRACE, ']' },
-				{ KEY_COMMA, ',' }, { KEY_DOT, '.' },
+				{ KEY_COMMA, ',' }, { KEY_DOT, '.' }, { KEY_C, 'c' },
 			};
 
 			if (e.type == EV_REL) {

@@ -43,6 +43,7 @@ chmod +x /tmp/specan; /tmp/specan 88 108     # or -F 101000 to start listening a
 | Enter | radio on/off |
 | `r` | new sweep (sound stops for about 2 s) |
 | `+` / `-` | volume while listening, otherwise reference level |
+| `c` | mark the box's own lines: multiples of 6 MHz in orange, of 74.25 MHz (HDMI) in magenta |
 | `,` / `.` | tuner gain down/up, register `0x78` (about 18 dB; the default is practically the best) |
 | `[` / `]` | ADC gain down/up (avoids clipping; does not improve reception) |
 | `b` | tuner filter while listening: 8, 7, 6 MHz (no measurable gain) |
@@ -93,9 +94,10 @@ filter gave no measurable gain either.
 
 The tuner has a gain in undocumented register `0x78` (found by scanning bits, about 18 dB,
 default `0x18`). Going lower hurts weak stations, going higher barely adds level and no
-pilot. IF level, cable mode, other tuner modes and the demod AGC loop, which does run after
-MBoot `tuner_tune`, changed nothing. No LNA control was found; only part of the tuner's
-registers was scanned.
+pilot. IF level, cable mode and other tuner modes changed nothing. The demod AGC loop runs after
+MBoot `tuner_tune` and does control the tuner, but only downwards: with a strong line in
+band it lowers the gain by 10-20 dB, and with weak signals it sits at the same maximum as
+with no AGC at all. No LNA control was found; only part of the tuner's registers was scanned.
 
 With the antenna unplugged the noise floor stays the same (-45.7 against -45.5 dB) and so
 does the 6 MHz comb, while the stations and the 742.5 MHz HDMI line go away. So the noise
@@ -109,7 +111,7 @@ Most lines seen with this antenna are made by the box itself:
 | Lines | Source | Evidence |
 |---|---|---|
 | multiples of 6 MHz, 48-864 MHz, up to -5 dBFS | something locked to the **tuner's** 24 MHz crystal (mechanism unknown) | constant offset over the whole band |
-| 148.5, 222.75, 371.25, 445.5, 742.5 MHz | **HDMI transmitter** | they vanish with TMDS and the PLL off (445.5 MHz only by frequency) |
+| multiples of 74.25 MHz: 148.5, 222.75, 371.25, 445.5, 519.75, 668.25, 742.5 MHz | **HDMI transmitter** | 148.5, 222.75, 371.25, 742.5 vanish with TMDS and the PLL off; the others only by frequency |
 | exactly at the tuned frequency, about -28 dBFS | **tuner LO leak**, stronger in the first 10 ms | reads RF = tuning to 0.3 kHz |
 
 The HDMI lines drift 6.3 ppm against the tuner's LO, while vsync is locked to the CPU

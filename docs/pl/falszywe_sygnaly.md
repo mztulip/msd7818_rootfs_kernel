@@ -9,12 +9,14 @@ Oznaczenia: ✅ zmierzone na płycie, 🔍 wynika z kodu lub schematu, ❓ hipot
 | Rodzina | Częstotliwości | Poziom | Źródło | Pewność |
 |---|---|---|---|---|
 | Grzebień 6 MHz | wielokrotności 6 MHz, 48–864 MHz, 49 z 58 prążków | do −5 dBFS | **coś związane z kwarcem tunera**, nie SoC | ✅ związanie, ❓ mechanizm |
-| Rodzina HDMI | 148,5 / 222,75 / 371,25 / 445,5 / 742,5 MHz | do −18 dBFS | **nadajnik HDMI** w SoC (1080p50) | ✅ |
+| Rodzina HDMI | wielokrotności 74,25 MHz: 148,5 / 222,75 / 371,25 / 445,5 / 519,75 / 668,25 / 742,5 MHz | do −18 dBFS, chwilami silniej | **nadajnik HDMI** w SoC (1080p50) | ✅ |
 | Przeciek LO | zawsze dokładnie na częstotliwości strojenia | −28 dBFS, tuż po strojeniu do −3 | **generator LO tunera** | ✅ |
 | Odbicia lustrzane | RF lustrzane względem strojenia | jak sygnał | **próbkowanie 9,09 MS/s** (składanie widma) | ✅ |
 | Złe strojenie | F = 219 MHz | | **strojenie tunera** | ✅ objaw, ❓ przyczyna |
 
 Te pięć rzeczy to nie sygnały z anteny. Nie są też zakłóceniem z procesora: **w widmie nie ma żadnego prążka na kwarcu SoC poza HDMI** (niżej), choć wiele prążków wypada na „okrągłych” częstotliwościach zegarów SoC (144, 216, 432, 552 MHz).
+
+**Oznaczenia w `specan`:** program wylicza te częstotliwości i koloruje linię widma oraz etykietę szczytu: wielokrotności 6 MHz na pomarańczowo, 74,25 MHz na fioletowo; klawisz `c` to wyłącza. To pozycje wyliczone, więc nie każda wielokrotność ma prążek, a przy pełnym zakresie (kolumna ok. 460 kHz) kolor może trafić też w inny sygnał obok.
 
 ## Jak rozdzielono źródła: dwa kwarce
 
@@ -94,7 +96,8 @@ Powtarzalnie (3 pomiary): przy F = 219 MHz przeciek LO wypada na 218,971 zamiast
 ## Co nie jest fałszywe lub nie jest wyjaśnione
 
 - **91,1 / 99,9 / 101,0 MHz** ✅: prawdziwe stacje FM, jest w nich pilot stereo 19 kHz po demodulacji ([odbior_fm.md](odbior_fm.md)). **98,1 MHz** ❓: pilot tylko +4,6 dB z 1 s nagrania.
-- **668,25 MHz** (−34 dBFS, próg listy) ❓: nieznane.
+- **668,25 MHz** (9 × 74,25) i **519,75 MHz** (7 × 74,25) ❓: pasują do rodziny HDMI, ale w teście z wyłączaniem nadajnika ich nie sprawdzano.
+- **Garb ok. 482 MHz** ❓: ok. 8 MHz szerokości, wygląda na multipleks DVB-T (zrzut z pełnego zakresu); nie demodulowany.
 - **Skoki poziomu szumu przy ok. 135, 333 i 650 MHz** ❓: najpewniej przełączanie pasm tunera (333 MHz to zmiana rejestru `0x80` w `tune()`).
 
 ## Nieudane testy
