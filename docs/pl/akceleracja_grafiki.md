@@ -63,7 +63,7 @@ Rejestry i kolejność wywołań można odczytać z `libapiGFX.a` (ma symbole) i
 
 Dla Dooma GE daje mniej niż pomysł 1: rozciąganie przez GE dalej zapisywałoby 3,2 MB do pamięci na klatkę, tylko zamiast procesora robiłby to blitter. Mógłby za to zastąpić procesor przy konwersji palety ❓, jeśli GE obsługuje formaty z paletą (I8 → RGB565).
 
-**Pomiar w `specan` (2026-11-04, `-v`, ms na klatkę, bez radia / z radiem):** budowa wykresu w RAM (procesor) 26–35 / 61, kopia wykresu 2,2 MB do bufora ekranu 10 / 17, tekst 2–8, czekanie na vsync ok. 12. GE zastąpiłby głównie kopię, a więc mniejszą część. Większość czasu to własna pętla rysująca, która chodzi po buforze kolumnami, czyli wbrew cache'owi (16 KB) ❓; najpierw warto ją poprawić programowo.
+**Pomiar w `specan` (2026-11-04, `-v`, ms na klatkę, bez radia / z radiem):** pierwotnie budowa wykresu w RAM 26–35 / 61 i kopia 2,2 MB do bufora ekranu 10 / 17. Pętla szła po buforze kolumnami. Po przepisaniu na wiersze (cztery wzorce wierszy mieszczące się w cache, bez bufora pośredniego) całe rysowanie wykresu trwa 19 / 37 ✅, bez użycia GE. Rysowanie i tak czeka na vsync (20 ms). GE mógłby przejąć już tylko część tego czasu.
 
 ## Pomysł 3 (dalej): sprzętowy JPEG
 

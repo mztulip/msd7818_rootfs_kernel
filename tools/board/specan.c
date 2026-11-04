@@ -154,6 +154,8 @@ static inline uint32_t cc(void)
 	return v;
 }
 
+static void ui_wait(double until);
+
 static void mxl_w(uint8_t reg, uint8_t val)
 {
 	uint8_t buf[2] = { reg, val };
@@ -199,7 +201,7 @@ static void mxl_init(void)
 static void tune(int hz)
 {
 	int n = hz / 15625;	/* 1/64 MHz; callers tune on whole MHz, so this is exact */
-	struct timespec ms = { 0, 1000000L }, ts = { 0, settle_ms * 1000000L };
+	struct timespec ms = { 0, 1000000L };
 
 	mxl_w(0x0f, 0x00);
 	mxl_w(0x0c, 0x3f);	/* 8 MHz */
@@ -213,7 +215,7 @@ static void tune(int hz)
 	mxl_w(0x0f, 0x01);
 	for (int t = 0; t < 100 && mxl_r(0xd8) != 0x0f; t++)
 		nanosleep(&ms, NULL);	/* RF + ref PLL lock */
-	nanosleep(&ts, NULL);
+	ui_wait(now() + settle_ms * 1e-3);
 }
 
 static void capture(void)
@@ -1137,7 +1139,7 @@ static void radio_exit(void) { }
 
 /* ---- screen ---- */
 
-static uint16_t *fbmem, *back, *grid;
+static uint16_t *fbmem, *back;
 static int W = 1920, H = 1080, shown;
 #ifndef HOST
 static int fbfd = -1;
@@ -1207,32 +1209,42 @@ static int db_y(int v)	/* dB * 16 to a plot row */
 	return y < 0 ? 0 : y >= PLOT_H ? PLOT_H - 1 : y;
 }
 
-/* Static plot background in RAM (fb memory is uncached, so reading it back is slow) */
+/*
+ * Plot background. Only two kinds of row exist (with or without a horizontal grid line),
+ * each with and without the fill under the trace, so they fit the 16 KB data cache.
+ */
+static uint16_t grid_row[2][2][COLS];
+static uint8_t grid_is_h[PLOT_H];
+
 static void draw_grid(void)
 {
 	static const int steps[] = { 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000 };
 	int span_khz = (stop_hz - start_hz) / 1000, st = 100000;
 
-	for (int i = 0; i < PLOT_H * COLS; i++)
-		grid[i] = 0;
+	memset(grid_is_h, 0, sizeof(grid_is_h));
+	for (int y = 0; y <= DB_SPAN; y += 10) {
+		int row = y * PLOT_H / DB_SPAN;
+
+		if (row < PLOT_H)
+			grid_is_h[row] = 1;
+	}
+	for (int x = 0; x < COLS; x++) {
+		grid_row[0][0][x] = 0;
+		grid_row[0][1][x] = RGB(0, 50, 90);
+		grid_row[1][0][x] = grid_row[1][1][x] = RGB(40, 60, 40);
+	}
 	for (unsigned i = 0; i < sizeof(steps) / sizeof(steps[0]); i++)
 		if (span_khz / steps[i] <= 10) {
 			st = steps[i];
 			break;
 		}
-	for (int y = 0; y <= DB_SPAN; y += 10) {
-		int row = y * PLOT_H / DB_SPAN;
-
-		if (row < PLOT_H)
-			for (int x = 0; x < COLS; x++)
-				grid[row * COLS + x] = RGB(40, 60, 40);
-	}
 	for (int khz = (start_hz / 1000 + st - 1) / st * st; khz <= stop_hz / 1000; khz += st) {
 		int x = (int)((int64_t)(khz * 1000LL - start_hz) * COLS / (stop_hz - start_hz));
 
 		if (x < COLS)
-			for (int y = 0; y < PLOT_H; y++)
-				grid[y * COLS + x] = RGB(40, 40, 70);
+			for (int h = 0; h < 2; h++)
+				for (int f = 0; f < 2; f++)
+					grid_row[h][f][x] = RGB(40, 40, 70);
 	}
 }
 
@@ -1278,7 +1290,6 @@ static void lut_init(void)
 static void fb_init(void)
 {
 	wf = calloc(COLS * WF_H, sizeof(*wf));
-	grid = malloc(COLS * PLOT_H * sizeof(*grid));
 	lut_init();
 #ifdef HOST
 	fbmem = calloc(W * H * 2, 2);
@@ -1387,7 +1398,8 @@ static int find_peaks(struct peak *pk, int maxp, int *floor_out)
 
 /* Mouse pointer in screen pixels */
 static int ptr_x = 960, ptr_y = 300, ptr_seen, ptr_moved;
-static int ptr_last_x = 960, ptr_last_y = 300, ptr_wipe;
+static int ptr_old_x[2] = { -1, -1 }, ptr_old_y[2];	/* where it is drawn in each buffer */
+static double ptr_t;		/* when the pointer first moved since the last frame */
 
 /* Plot column to a frequency on the 100 kHz station grid */
 static int snap_hz(int col)
@@ -1403,49 +1415,67 @@ static void render(void)
 	char line[160];
 	int off = 0;
 	uint16_t *row = back + PLOT_Y * W + PLOT_X;
-	static uint16_t *screen_buf;
+	static int16_t top[COLS], bot[COLS], hold_y[COLS];
+	int bufi = back != fbmem, wipe_a = 1, wipe_b = 0;
 
-	if (!screen_buf)
-		screen_buf = malloc(COLS * PLOT_H * sizeof(*screen_buf));
-	memcpy(screen_buf, grid, COLS * PLOT_H * sizeof(*grid));
-
-	int py = -1;
+	/* only the plot and text are redrawn every frame: remove the pointer from this buffer */
+	if (ptr_old_x[bufi] >= 0) {
+		rect(back, ptr_old_x[bufi] - 10, ptr_old_y[bufi] - 10, 21, 21, 0);
+		wipe_a = ptr_old_y[bufi] - 10 - WF_Y;
+		wipe_b = ptr_old_y[bufi] + 10 - WF_Y;
+	}
+	static uint16_t mix[COLS];
+	int py = -1, amin = PLOT_H, bmax = -1, tick_x = -1, mark_x = -1;
+	const uint16_t line_c = RGB(80, 230, 255), hold_c = RGB(255, 200, 40);
+	const uint16_t mark_c = radio_on ? RGB(255, 80, 80) : RGB(200, 200, 80);
 
 	for (int c = 0; c < COLS; c++) {
 		int y = db_y(trace[c]);
 
-		for (int j = y; j < PLOT_H; j++) {
-			uint16_t *p = &screen_buf[j * COLS + c];
-
-			if (*p == 0)
-				*p = RGB(0, 50, 90);
-		}
-		if (py >= 0) {
-			int a = py < y ? py : y, b = py < y ? y : py;
-
-			for (int j = a; j <= b; j++)
-				screen_buf[j * COLS + c] = RGB(80, 230, 255);
-		}
+		/* the line joins this column to the previous one; below it is the fill */
+		top[c] = py < 0 ? y : py < y ? py : y;
+		bot[c] = py < 0 ? y - 1 : py < y ? y : py;
 		py = y;
-		if (hold_on)
-			screen_buf[db_y(hold[c]) * COLS + c] = RGB(255, 200, 40);
+		amin = top[c] < amin ? top[c] : amin;
+		bmax = bot[c] > bmax ? bot[c] : bmax;
+		if (hold_on) {
+			hold_y[c] = (int16_t)db_y(hold[c]);
+			amin = hold_y[c] < amin ? hold_y[c] : amin;
+			bmax = hold_y[c] > bmax ? hold_y[c] : bmax;
+		}
 	}
 	if (!radio_on) {
-		int x = (int)((int64_t)(tune_hz - start_hz) * COLS / (stop_hz - start_hz));
-
-		if (x >= 0 && x < COLS)
-			for (int j = 0; j < 8; j++)
-				screen_buf[j * COLS + x] = RGB(255, 60, 60);
+		tick_x = (int)((int64_t)(tune_hz - start_hz) * COLS / (stop_hz - start_hz));
+		tick_x = tick_x >= 0 && tick_x < COLS ? tick_x : -1;
 	}
-	if (marker_set && marker_hz >= start_hz && marker_hz < stop_hz) {
-		int x = (int)((int64_t)(marker_hz - start_hz) * COLS / (stop_hz - start_hz));
-
-		for (int j = 0; j < PLOT_H; j += 1 + !radio_on)
-			screen_buf[j * COLS + x] = radio_on ? RGB(255, 80, 80) : RGB(200, 200, 80);
-	}
+	if (marker_set && marker_hz >= start_hz && marker_hz < stop_hz)
+		mark_x = (int)((int64_t)(marker_hz - start_hz) * COLS / (stop_hz - start_hz));
 	t_trace = now();
-	for (int j = 0; j < PLOT_H; j++)
-		memcpy(row + j * W, screen_buf + j * COLS, COLS * sizeof(*screen_buf));
+	/* row by row: going through a frame-sized buffer by columns misses the cache on every pixel */
+	for (int j = 0; j < PLOT_H; j++) {
+		uint16_t *dst = row + j * W;
+		const uint16_t *plain = grid_row[grid_is_h[j]][0], *fill = grid_row[grid_is_h[j]][1];
+
+		if (j < amin) {
+			memcpy(dst, plain, sizeof(mix));
+		} else if (j > bmax) {
+			memcpy(dst, fill, sizeof(mix));
+		} else {
+			memcpy(mix, plain, sizeof(mix));
+			for (int c = 0; c < COLS; c++)
+				if (j >= top[c])
+					mix[c] = j <= bot[c] ? line_c : fill[c];
+			if (hold_on)
+				for (int c = 0; c < COLS; c++)
+					if (hold_y[c] == j)
+						mix[c] = hold_c;
+			memcpy(dst, mix, sizeof(mix));
+		}
+		if (mark_x >= 0 && (radio_on || !(j & 1)))
+			dst[mark_x] = mark_c;
+		if (tick_x >= 0 && j < 8)
+			dst[tick_x] = RGB(255, 60, 60);
+	}
 	t_copy = now();
 
 	/* labels are drawn straight into the back buffer */
@@ -1476,27 +1506,16 @@ static void render(void)
 	}
 
 	draw_axes(back);
-	/* only the plot is redrawn every frame: wipe the pointer from the rest in both buffers */
-	if (ptr_x != ptr_last_x || ptr_y != ptr_last_y) {
-		ptr_last_x = ptr_x;
-		ptr_last_y = ptr_y;
-		ptr_wipe = 2;
-	}
-	if (ptr_wipe) {
-		ptr_wipe--;
-		rect(back, 0, PLOT_Y, PLOT_X, WF_Y + WF_H - PLOT_Y, 0);
-		rect(back, PLOT_X + COLS, 0, W - PLOT_X - COLS, H, 0);
-		rect(back, 0, PLOT_Y + PLOT_H, W, WF_Y - PLOT_Y - PLOT_H, 0);
-		draw_axes(back);
-		wf_dirty = wf_dirty > 1 ? wf_dirty : 1;
-	}
+	/* the whole waterfall when it has a new row, else only where the old pointer was */
 	if (wf_dirty) {
-		for (int j = 0; j < WF_H; j++) {
-			int r = (wf_row - 1 - j + WF_H) % WF_H;
-
-			memcpy(back + (WF_Y + j) * W + PLOT_X, wf + r * COLS, COLS * sizeof(*wf));
-		}
+		wipe_a = 0;
+		wipe_b = WF_H - 1;
 		wf_dirty--;
+	}
+	for (int j = wipe_a < 0 ? 0 : wipe_a; j <= wipe_b && j < WF_H; j++) {
+		int r = (wf_row - 1 - j + WF_H) % WF_H;
+
+		memcpy(back + (WF_Y + j) * W + PLOT_X, wf + r * COLS, COLS * sizeof(*wf));
 	}
 	rect(back, 0, H - 30, W, 30, 0);
 	text(back, 8, H - 26, RGB(120, 120, 120),
@@ -1504,13 +1523,20 @@ static void render(void)
 	if (ptr_seen) {
 		rect(back, ptr_x - 10, ptr_y, 21, 1, RGB(255, 255, 255));
 		rect(back, ptr_x, ptr_y - 10, 1, 21, RGB(255, 255, 255));
+		ptr_old_x[bufi] = ptr_x;
+		ptr_old_y[bufi] = ptr_y;
 	}
 	t_flip = now();
 	fb_flip();
 
-	if (verbose)
-		printf("render ms: trace %.1f, plot copy %.1f, text %.1f, flip %.1f\n", (t_trace - t0) * 1e3,
+	if (verbose) {
+		printf("render ms: trace %.1f, plot copy %.1f, text %.1f, flip %.1f", (t_trace - t0) * 1e3,
 		       (t_copy - t_trace) * 1e3, (t_flip - t_copy) * 1e3, (now() - t_flip) * 1e3);
+		if (ptr_t > 0)
+			printf(", pointer latency %.0f", (now() - ptr_t) * 1e3);
+		printf("\n");
+	}
+	ptr_t = 0;
 	if (verbose && np) {
 		printf("sweep %d %.2fs floor %d peaks:", sweep_n, last_sweep_s, fl);
 		for (int i = 0; i < np; i++) {
@@ -1666,6 +1692,11 @@ static void apply_key(int k)
 	case 'r':
 		rescan = 1;
 		break;
+	case 'o':
+		radio_want = 0;
+		radio_pending = 1;
+		radio_change_t = 0;
+		break;
 	case 'p':
 		paused = !paused;
 		break;
@@ -1675,7 +1706,33 @@ static void apply_key(int k)
 	}
 }
 
-static void poll_keys(void)
+/*
+ * Input is read often (also while the tuner settles, see ui_wait) but acted on only between
+ * tunings: a view or marker change in the middle of one would mix it with the new state.
+ * The pointer itself moves at once. Queue values: a key for apply_key, or KQ_CLICK + column.
+ */
+#define KQ_CLICK 0x10000
+static int kq[64];
+static unsigned kq_w, kq_r;
+
+static void kq_put(int k)
+{
+	if (k && kq_w - kq_r < 64)
+		kq[kq_w++ % 64] = k;
+}
+
+static void ptr_add(int dx, int dy)
+{
+	ptr_x += dx;
+	ptr_y += dy;
+	ptr_x = ptr_x < 0 ? 0 : ptr_x >= W ? W - 1 : ptr_x;
+	ptr_y = ptr_y < 0 ? 0 : ptr_y >= H ? H - 1 : ptr_y;
+	if (!ptr_moved)
+		ptr_t = now();
+	ptr_seen = ptr_moved = 1;
+}
+
+static void poll_input(void)
 {
 	static int esc;
 	unsigned char ch;
@@ -1685,11 +1742,15 @@ static void poll_keys(void)
 			esc = ch == '[' ? 2 : 0;
 		} else if (esc == 2) {
 			esc = 0;
-			apply_key(ch == 'A' ? 'w' : ch == 'B' ? 's' : ch == 'C' ? 'R' : ch == 'D' ? 'L' : 0);
+			kq_put(ch == 'A' ? 'w' : ch == 'B' ? 's' : ch == 'C' ? 'R' : ch == 'D' ? 'L' : 0);
 		} else if (ch == 27) {
 			esc = 1;
+#ifdef PTR_TEST
+		} else if (ch == 'x') {		/* pointer from the serial console, for testing */
+			ptr_add(ptr_x > W - 40 ? -ptr_x : 37, ptr_y > H - 40 ? -ptr_y : 29);
+#endif
 		} else {
-			apply_key(ch);
+			kq_put(ch);
 		}
 	}
 	for (int i = 0; i < 8; i++) {
@@ -1711,27 +1772,23 @@ static void poll_keys(void)
 
 			if (e.type == EV_REL) {
 				if (e.code == REL_X)
-					ptr_x += e.value;
+					ptr_add(e.value, 0);
 				else if (e.code == REL_Y)
-					ptr_y += e.value;
+					ptr_add(0, e.value);
 				else if (e.code == REL_WHEEL)
-					marker_to(marker_hz + e.value * 100000, 0);
-				ptr_x = ptr_x < 0 ? 0 : ptr_x >= W ? W - 1 : ptr_x;
-				ptr_y = ptr_y < 0 ? 0 : ptr_y >= H ? H - 1 : ptr_y;
-				ptr_seen = ptr_moved = 1;
+					for (int k = e.value; k; k += k < 0 ? 1 : -1)
+						kq_put(k > 0 ? 'R' : 'L');
 				continue;
 			}
 			if (e.type != EV_KEY || !e.value)
 				continue;
 			if (e.code == BTN_LEFT && e.value == 1) {
 				if (ptr_x >= PLOT_X && ptr_x < PLOT_X + COLS && ptr_y < WF_Y + WF_H)
-					marker_to(snap_hz(ptr_x - PLOT_X), 1);
+					kq_put(KQ_CLICK + ptr_x - PLOT_X);
 				continue;
 			}
 			if (e.code == BTN_RIGHT && e.value == 1) {
-				radio_want = 0;
-				radio_pending = 1;
-				radio_change_t = 0;
+				kq_put('o');
 				continue;
 			}
 			/* auto-repeat only for the marker */
@@ -1739,7 +1796,7 @@ static void poll_keys(void)
 				continue;
 			for (unsigned j = 0; j < sizeof(map) / sizeof(map[0]); j++)
 				if (map[j].code == e.code)
-					apply_key(map[j].key);
+					kq_put(map[j].key);
 		}
 		if (n < 0 && errno == ENODEV) {		/* unplugged */
 			close(evfd[i]);
@@ -1747,6 +1804,39 @@ static void poll_keys(void)
 		}
 	}
 }
+
+static void apply_queue(void)
+{
+	while (kq_r != kq_w) {
+		int k = kq[kq_r++ % 64];
+
+		if (k >= KQ_CLICK)
+			marker_to(snap_hz(k - KQ_CLICK), 1);
+		else
+			apply_key(k);
+	}
+}
+
+/* Wait out the tuner settling; a moving pointer gets drawn in the meantime */
+static int ui_ready;
+static double last_render;
+
+#ifndef HOST
+static void ui_wait(double until)
+{
+	while (now() < until) {
+		if (ui_ready) {
+			poll_input();
+			if (ptr_moved) {
+				ptr_moved = 0;
+				render();
+				last_render = now();
+			}
+		}
+		usleep(1000);
+	}
+}
+#endif
 
 static void on_signal(int s)
 {
@@ -1824,7 +1914,7 @@ static void raw_list(int a, int b)
 int main(int argc, char **argv)
 {
 	int opt, a = 88, b = 108, exit_after = 0, scan = 0, raw = 0;
-	double last_render = 0, last_rescan = 0;
+	double last_rescan = 0;
 
 	while ((opt = getopt(argc, argv, "n:a:t:s:vx:SRCDMF:")) != -1) {
 		switch (opt) {
@@ -1886,6 +1976,7 @@ int main(int argc, char **argv)
 	keys_init();
 	radio_init();
 	view(a, b);
+	ui_ready = 1;
 	fflush(stdout);
 
 	while (!quit) {
@@ -1893,7 +1984,8 @@ int main(int argc, char **argv)
 			keys_rescan();
 			last_rescan = now();
 		}
-		poll_keys();
+		poll_input();
+		apply_queue();
 		/* retune after the marker has rested, not on every arrow step */
 		if (radio_pending && now() - radio_change_t > 0.15) {
 			radio_pending = 0;
@@ -1915,7 +2007,7 @@ int main(int argc, char **argv)
 				render();
 				last_render = now();
 			}
-			usleep(20000);
+			usleep(5000);
 			continue;
 		}
 		if (paused) {
@@ -1946,7 +2038,7 @@ int main(int argc, char **argv)
 			continue;
 		}
 		tune_hz += cur_step;
-		if (now() - last_render > (ptr_moved ? 0.1 : 0.2)) {
+		if (ptr_moved || now() - last_render > 0.2) {
 			ptr_moved = 0;
 			render();
 			last_render = now();
