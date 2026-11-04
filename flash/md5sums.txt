@@ -1,3 +1,3 @@
 844c5df02001c29ea48efdd707074d80  kernel.img
 0d568f2ecee01c350d7e0de3b9c35c25  logofix.img
-00749d88fe4186609e9659b74e893a37  rootfs.img
+ebcb2ec257e59f8de6da152eb90bffd9  rootfs.img

@@ -81,7 +81,7 @@ Osobna konfiguracja Buildroota, budowana do `rootfs_mini/output` (główny Build
 
 **Zawartość:**
 - BusyBox, statycznie z musl (1,2 MB przed kompresją);
-- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem przez **nasz własny program DSP** (`OWN_SOUND=1`, `own_audio.h`, bez kodu MStara; 494 KB; od 2026-10-20, wcześniej 581 KB z kodem DSP MStara), dźwięk tylko na HDMI. **Od obrazu z 2026-11-03** (`flash_images/rootfs_20261103.img`): także **muzyka** (OPL2, własny `opl2.c`, fbDOOM `master` 2904f62), 562 KB, ✅ sprawdzony z pendrive'a (`sda3`), **jeszcze nie zapisany do flasha**;
+- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem przez **nasz własny program DSP** (`OWN_SOUND=1`, `own_audio.h`, bez kodu MStara; 494 KB; od 2026-10-20, wcześniej 581 KB z kodem DSP MStara), dźwięk tylko na HDMI. **we flashu od 2026-11-04** (`flash_images/rootfs_20261104.img`, fbDOOM `master` e66cb6c): także **muzyka** (OPL2, własny `opl2.c`) i wyłączanie dźwięku przy wyjściu Ctrl+C, 562 KB, ✅ po zapisie sprawdzony przez grabber HDMI (`docs/grabber_hdmi.md`);
 - `/home/freedoom_e1m1.wad`: okrojony Freedoom (jedna mapa E1M1, BSD-3, `tools/doom/mkminiwad.py`) z `FREEDOOM_COPYING.txt` i plikami `FREEDOOM_CREDITS*.txt` obok (wymóg licencji); do 2026-10-20 był tu `doom1.wad`; polecenie `doom` uruchamia grę;
 - **root bez hasła, logowany automatycznie** na konsoli szeregowej i na ekranie (`tty1`), od 2026-10-20 (niżej: „Logowanie”);
 - `/tmp` i `/run` w RAM (tmpfs), reszta tylko do odczytu;
@@ -95,7 +95,7 @@ Od 2026-10-20 **obraz nie zawiera kodu MStara**: fbDOOM gra przez nasz program D
 
 ## Publiczne obrazy i instrukcja (2026-11-03)
 
-W repo `msd7818_rootfs_kernel`: `flash/` (`kernel.img`, `logofix.img`, `rootfs.img` = `rootfs_20261103.img`, `md5sums.txt`), `bin/fbdoom_music`, `rootfs_mini/` (defconfig ze ścieżkami względnymi do `../msd7818_rootfs_kernel`, overlay bez `fbdoom` i WAD-u, `post_build.sh`), `tools/flash/mkflash.py` (LZMA + CRC32 dla `LzmaDec`, dopełnianie `0xFF`; odtwarza wszystkie trzy obrazy bit w bit), `build_manual.md` (budowa ze źródeł) i sekcja „Flash system” w `README.md` (zapis z MBoota z pendrive'a FAT32, bez TFTP). Powrót do oryginału z kopii (`spi_wrc 0x80C80000 0x80000 0x360000`) opisany, ale niesprawdzony ❓.
+W repo `msd7818_rootfs_kernel`: `flash/` (`kernel.img`, `logofix.img`, `rootfs.img` = `rootfs_20261104.img`, `md5sums.txt`), `bin/fbdoom_music`, `rootfs_mini/` (defconfig ze ścieżkami względnymi do `../msd7818_rootfs_kernel`, overlay bez `fbdoom` i WAD-u, `post_build.sh`), `tools/flash/mkflash.py` (LZMA + CRC32 dla `LzmaDec`, dopełnianie `0xFF`; odtwarza wszystkie trzy obrazy bit w bit), `build_manual.md` (budowa ze źródeł) i sekcja „Flash system” w `README.md` (zapis z MBoota z pendrive'a FAT32, bez TFTP). Powrót do oryginału z kopii (`spi_wrc 0x80C80000 0x80000 0x360000`) opisany, ale niesprawdzony ❓.
 
 ## Test bez zapisu do flasha (zrobione 2026-10-19)
 

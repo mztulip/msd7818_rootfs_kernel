@@ -41,6 +41,7 @@ Każda informacja ma oznaczenie pewności:
 | [sterownik_gopfb.md](sterownik_gopfb.md) | Jak krok po kroku powstał sterownik fbdev `mstar-gopfb` z podwójnym buforowaniem i vsync |
 | [logo_startowe.md](logo_startowe.md) | Własne logo startowe MBoota: JPEG we flashu `0x70000`, `LOGO_BIN_SIZE`, wgranie i powrót do logo WIWA |
 | [przesylanie_uart.md](przesylanie_uart.md) | Wgrywanie plików na płytę przez konsolę UART (gzip + base64 + md5), `tools/uart_upload.py` |
+| [grabber_hdmi.md](grabber_hdmi.md) | Grabber HDMI USB: podgląd obrazu i dźwięku z płyty (`ffplay`/`ffmpeg`), pomiar dźwięku HDMI bez słuchania |
 | [ghidra_funkcje.md](ghidra_funkcje.md) | Adresy funkcji BSP w U-Boocie i jak je odtworzyć |
 
 Narzędzia:

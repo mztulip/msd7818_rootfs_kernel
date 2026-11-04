@@ -67,6 +67,8 @@ Tabela fabrycznego initu (`MDrv_AUDIO_WriteInitTable`, 192 zapisy) po zimnym sta
 
 `make clean; make NOSDL=1 OWN_SOUND=1` (Makefile w `fbDOOM/fbdoom`, `i_mstarsound.c` dołącza wtedy `own_audio.h`). Na płytce `/home/fbdoom_own`. Nagranie dema: głośność zmienia się w czasie tak samo jak w wersji z kodem MStara (`/home/fbdoom`), ale głośniej (średnio 56 wobec 48), a `-nosound` daje płaskie nagranie (44). fbDOOM przełącza konsolę szeregową w tryb surowy, więc po grze trzeba wpisać `^C` i `stty sane` (robi to `doomrun.sh`).
 
+**Wyjście przez Ctrl+C** (poprawka 2026-11-04, we flashu od `rootfs_20261104.img`): `kbd_shutdown()` kończyła program przez `exit(0)` przed `I_Quit()`, więc `maudio_close()` się nie wykonywało, a SE dalej grał pierścień w kółko na HDMI aż do następnego programu audio. Teraz Ctrl+C woła samo `I_Quit()`. Sprawdzone przez grabber: po wyjściu cisza, kod wyjścia 0, terminal przywrócony. Grabber oddaje jeszcze ok. 260 ms wcześniejszego dźwięku, to jego bufor.
+
 ## W systemie z flasha (od 2026-10-20)
 
 Rootfs mini systemu we flashu (`docs/plan_mini_system.md`) ma `/home/fbdoom` zbudowany statycznie z musl i `OWN_SOUND=1` oraz `freedoom_e1m1.wad` (okrojony Freedoom, BSD-3). Obraz nie zawiera więc kodu MStara. Polecenie `doom` gra z dźwiękiem na HDMI. Sprawdzone przed zapisem (z `sda3`): gra bez błędów, ton `owntest` (statycznie z musl) na HDMI.
