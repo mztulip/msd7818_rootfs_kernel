@@ -29,10 +29,13 @@
  * left/right arrows and press Enter. VPE1 samples and mixes to 120 kS/s I/Q, VPE0 demodulates
  * and feeds our own SE DSP program (own_audio.h). The sweep stops while listening.
  *
- * Mouse: left click tunes, wheel moves the marker, right click stops the radio.
+ * Mouse: left click tunes, right click stops the radio, the wheel moves the marker or, after
+ *   a middle click (or z), zooms the view around the pointer. The grid of the marker follows
+ *   the zoom: 100 kHz, below 5 MHz span 10 kHz, below 500 kHz span 1 kHz. Narrowest span 200 kHz.
  * Keys (serial console, USB keyboard): left/right marker -/+100 kHz, Enter radio on/off,
  *   r new sweep, a/d move the view, up/down or w/s zoom, 1-4 presets (FM, VHF, UHF, all),
  *   h max hold, m max/mean per column, +/- reference level (volume while listening),
+ *   z wheel mode, v VBW (FFTs averaged per tuning, 1 to 32, then back to 1; narrower is slower),
  *   , . tuner gain, [ ] ADC gain (neither improves the signal to noise ratio over the default;
  *   they can only avoid clipping),
  *   b tuner filter while listening (8, 7, 6 MHz), c mark the box's own spurs, p pause, q quit.
@@ -91,6 +94,9 @@
 #define DELTA_MAX	3200000		/* inside the 8 MHz IF filter */
 #define RF_MIN_MHZ	44
 #define RF_MAX_MHZ	885
+#define SPAN_MIN_HZ	200000
+#define AVG_MAX		32		/* key v */
+#define CAP_FFTS	8		/* FFTs per capture: with a 2 MB buffer every FFT had a gap (TLB reach?), 1 MB was fine */
 
 #define COLS		1800		/* plot width in pixels */
 #define PLOT_X		70
@@ -119,7 +125,7 @@ static uint16_t *brev, *win;
 static uint64_t *pwr;
 static int16_t *db, *ifgain;
 static struct rec *cap;
-static int cap_n;
+static int cap_n, cap_max;
 static int db_full;			/* db16() of a full-scale sine summed over the blocks */
 static int16_t db_tab[256];
 
@@ -325,7 +331,7 @@ static void capture(void)
 	double step = 30.375 / 276000000;	/* matches the ticks below */
 
 	if (!x)
-		x = malloc(cap_n * sizeof(*x));
+		x = malloc(cap_max * sizeof(*x));
 	for (int i = 0; i < cap_n; i++)
 		x[i] = gauss() * 2.5;
 	for (int t = 0; t < ntones; t++) {
@@ -381,6 +387,18 @@ static inline int db16(uint64_t p)
 	return ((l * 12330) >> 8) + db_tab[((p << (63 - l)) >> 55) & 0xff];
 }
 
+/* FFTs per tuning: VBW is about RBW / 2*AVG, as each FFT holds two real blocks */
+static void avg_set(int a)
+{
+	/* full-scale sine (peak 2^15 after windowing): X = 2^15 * (N/2) / 2 in every one
+	 * of the 2*AVG real blocks, see fft_block() for the sum */
+	double x = 32768.0 * N / 4;
+
+	AVG = a;
+	cap_n = N * (2 * (AVG < CAP_FFTS ? AVG : CAP_FFTS)) + N / 2;
+	db_full = (int)lrint(DB_UNIT * 10 * log10(x * x * 2 * 2 * AVG));
+}
+
 static void dsp_init(void)
 {
 	int b = __builtin_ctz(N);
@@ -407,12 +425,7 @@ static void dsp_init(void)
 	}
 	for (int i = 0; i < 256; i++)
 		db_tab[i] = (int16_t)lrint(DB_UNIT * 10 * log10(1 + i / 256.0));
-
-	/* full-scale sine (peak 2^15 after windowing): X = 2^15 * (N/2) / 2 in every one
-	 * of the 2*AVG real blocks, see fft_block() for the sum */
-	double x = 32768.0 * N / 4;
-
-	db_full = (int)lrint(DB_UNIT * 10 * log10(x * x * 2 * 2 * AVG));
+	avg_set(AVG);
 }
 
 static void fft(void)
@@ -480,6 +493,8 @@ static void set_fs(uint64_t samples, uint64_t ticks)
 	bin_k = (uint64_t)((double)N * 4294967296.0 / fs_hz + 0.5);
 }
 
+static void ui_slow_tick(void);
+
 /* Average AVG FFTs over gap-free stretches of the capture, result in db[] (dB * 16, dBFS) */
 static void measure(void)
 {
@@ -488,7 +503,7 @@ static void measure(void)
 	uint64_t ticks = 0, samples = 0;
 
 	memset(pwr, 0, (N / 2 + 1) * sizeof(*pwr));
-	for (int tries = 0; ffts < AVG && tries < 16; tries++) {
+	for (int tries = 0; ffts < AVG && tries < 16 + AVG; tries++) {
 		int i = 0;
 
 		capture();
@@ -509,6 +524,7 @@ static void measure(void)
 				fft_block(pending, cap + i);
 				ffts++;
 				pending = NULL;
+				ui_slow_tick();
 			} else {
 				pending = cap + i;
 			}
@@ -631,20 +647,20 @@ static void ifgain_init(void)
 
 /* ---- sweep ---- */
 
-static void set_range(int mhz_a, int mhz_b)
+static void set_range(int hz_a, int hz_b)
 {
 	int span;
 
-	if (mhz_a < RF_MIN_MHZ)
-		mhz_a = RF_MIN_MHZ;
-	if (mhz_b > RF_MAX_MHZ)
-		mhz_b = RF_MAX_MHZ;
-	if (mhz_b < mhz_a + 2)
-		mhz_b = mhz_a + 2;
-	start_hz = mhz_a * 1000000;
-	stop_hz = mhz_b * 1000000;
-	span = mhz_b - mhz_a;
-	cur_step = step_hz ? step_hz : (span <= 30 ? 1000000 : span <= 150 ? 2000000 : 3000000);
+	if (hz_a < RF_MIN_MHZ * 1000000)
+		hz_a = RF_MIN_MHZ * 1000000;
+	if (hz_b > RF_MAX_MHZ * 1000000)
+		hz_b = RF_MAX_MHZ * 1000000;
+	if (hz_b < hz_a + SPAN_MIN_HZ)
+		hz_b = hz_a + SPAN_MIN_HZ;
+	start_hz = hz_a;
+	stop_hz = hz_b;
+	span = hz_b - hz_a;
+	cur_step = step_hz ? step_hz : (span <= 30000000 ? 1000000 : span <= 150000000 ? 2000000 : 3000000);
 	int st = cur_step;
 
 	first_tune = ((start_hz - DELTA_MAX) / st) * st;
@@ -1317,7 +1333,7 @@ static void spur_cols(void)
 {
 	for (int c = 0; c < COLS; c++) {
 		int width = col_hz[c + 1] - col_hz[c], mid = col_hz[c] + width / 2;
-		int tol = width > 20000 ? width : 20000;	/* a line is about 10 kHz wide on screen */
+		int tol = width > 10000 ? width : 10000;	/* a line is about 10 kHz wide on screen */
 
 		spur_kind[c] = near_multiple(mid, 6000000, tol) ? SPUR_COMB :
 			       near_multiple(mid, 74250000, tol) ? SPUR_HDMI : 0;
@@ -1326,7 +1342,7 @@ static void spur_cols(void)
 
 static void draw_grid(void)
 {
-	static const int steps[] = { 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000 };
+	static const int steps[] = { 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000 };
 	int span_khz = (stop_hz - start_hz) / 1000, st = 100000;
 
 	spur_cols();
@@ -1359,7 +1375,7 @@ static void draw_grid(void)
 
 static void draw_axes(uint16_t *fb)
 {
-	static const int steps[] = { 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000 };
+	static const int steps[] = { 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000 };
 	int span_khz = (stop_hz - start_hz) / 1000, st = 100000;
 
 	rect(fb, 0, PLOT_Y, PLOT_X, PLOT_H, 0);
@@ -1377,7 +1393,7 @@ static void draw_axes(uint16_t *fb)
 	for (int khz = (start_hz / 1000 + st - 1) / st * st; khz <= stop_hz / 1000; khz += st) {
 		int x = (int)((int64_t)(khz * 1000LL - start_hz) * COLS / (stop_hz - start_hz));
 
-		text(fb, PLOT_X + x - 30, PLOT_Y + PLOT_H + 8, RGB(200, 200, 200), "%.1f", khz / 1000.0);
+		text(fb, PLOT_X + x - 30, PLOT_Y + PLOT_H + 8, RGB(200, 200, 200), st < 100 ? "%.2f" : "%.1f", khz / 1000.0);
 	}
 }
 
@@ -1507,13 +1523,24 @@ static int find_peaks(struct peak *pk, int maxp, int *floor_out)
 
 /* Mouse pointer in screen pixels */
 static int ptr_x = 960, ptr_y = 300, ptr_seen, ptr_moved;
+static int wheel_zoom;		/* the wheel zooms instead of moving the marker */
 static int ptr_old_x[2] = { -1, -1 }, ptr_old_y[2];	/* where it is drawn in each buffer */
 static double ptr_t;		/* when the pointer first moved since the last frame */
 
-/* Plot column to a frequency on the 100 kHz station grid */
+/* Marker grid: the 100 kHz of FM stations, finer when zoomed in */
+static int snap_step(void)
+{
+	int span = stop_hz - start_hz;
+
+	return span >= 5000000 ? 100000 : span >= 500000 ? 10000 : 1000;
+}
+
+/* Plot column to a frequency on the marker grid */
 static int snap_hz(int col)
 {
-	return (col_hz[col] + 50000) / 100000 * 100000;
+	int st = snap_step();
+
+	return (col_hz[col] + st / 2) / st * st;
 }
 
 static void render(void)
@@ -1591,8 +1618,8 @@ static void render(void)
 
 	/* labels are drawn straight into the back buffer */
 	rect(back, 0, 0, W, PLOT_Y, 0);
-	off = snprintf(line, sizeof(line), "%.3f-%.3f MHZ  RBW %.1f KHZ  AVG %d  %s  SWEEP %.2f S",
-		       start_hz / 1e6, stop_hz / 1e6, fs_hz * 1.5 / N / 1e3, AVG * 2,
+	off = snprintf(line, sizeof(line), "%.3f-%.3f MHZ  RBW %.1f KHZ  VBW %.0f HZ  %s  SWEEP %.2f S",
+		       start_hz / 1e6, stop_hz / 1e6, fs_hz * 1.5 / N / 1e3, fs_hz * 1.5 / N / (AVG * 2),
 		       mode_mean ? "MEAN" : "MAX", last_sweep_s);
 	if (hold_on)
 		off += snprintf(line + off, sizeof(line) - off, "  HOLD");
@@ -1602,17 +1629,18 @@ static void render(void)
 	text(back, 8, 24, RGB(170, 220, 170), "DBFS  FLOOR %d  ADC %X  TUNER %02X", fl, adc_gain & 15,
 	     tuner_gains[tuner_gain]);
 	if (radio_on)
-		text(back, 400, 24, RGB(255, 120, 120), "RADIO %.1f MHZ  PILOT %+.0f DB  RX %.0f DB  VOL %d  FILTER %d",
+		text(back, 400, 24, RGB(255, 120, 120), "RADIO %.3f MHZ  PILOT %+.0f DB  RX %.0f DB  VOL %d  FILTER %d",
 		     marker_hz / 1e6, pilot_db, rx_db, volume, radio_bw);
 	else if (marker_set)
-		text(back, 400, 24, RGB(200, 200, 80), "MARKER %.1f MHZ  ENTER OR CLICK: LISTEN", marker_hz / 1e6);
+		text(back, 400, 24, RGB(200, 200, 80), "MARKER %.3f MHZ  ENTER OR CLICK: LISTEN", marker_hz / 1e6);
 	if (spur_marks) {
 		text(back, 1490, 4, RGB(255, 150, 40), "6 MHZ COMB");
 		text(back, 1640, 4, RGB(255, 70, 255), "HDMI");
 		text(back, 1710, 4, RGB(255, 255, 120), "OTHER PEAK");
 	}
 	if (ptr_seen && ptr_x >= PLOT_X && ptr_x < PLOT_X + COLS)
-		text(back, 1200, 24, RGB(255, 255, 255), "CURSOR %.1f MHZ", snap_hz(ptr_x - PLOT_X) / 1e6);
+		text(back, 1200, 24, RGB(255, 255, 255), "CURSOR %.3f MHZ", snap_hz(ptr_x - PLOT_X) / 1e6);
+	text(back, 1500, 24, wheel_zoom ? RGB(120, 220, 255) : RGB(170, 170, 170), "WHEEL: %s", wheel_zoom ? "ZOOM" : "MARKER");
 
 	for (int i = 0; i < np; i++) {
 		int f = col_hz[pk[i].col] + (col_hz[pk[i].col + 1] - col_hz[pk[i].col]) / 2;
@@ -1622,7 +1650,7 @@ static void render(void)
 
 		text(back, PLOT_X + pk[i].col - 36, y < PLOT_Y ? PLOT_Y : y,
 		     kind == SPUR_COMB ? RGB(255, 150, 40) : kind == SPUR_HDMI ? RGB(255, 70, 255) : RGB(255, 255, 120),
-		     "%.2f", f / 1e6);
+		     "%.*f", stop_hz - start_hz < 20000000 ? 3 : 2, f / 1e6);
 	}
 
 	draw_axes(back);
@@ -1639,7 +1667,7 @@ static void render(void)
 	}
 	rect(back, 0, H - 30, W, 30, 0);
 	text(back, 8, H - 26, RGB(120, 120, 120),
-	     "CLICK OR ARROWS+ENTER LISTEN  R SWEEP  A/D MOVE  W/S ZOOM  1 FM  2 VHF  3 UHF  4 ALL  H HOLD  M MAX/MEAN  +/- LEVEL  P PAUSE  Q QUIT");
+	     "CLICK OR ARROWS+ENTER LISTEN  R SWEEP  A/D MOVE  W/S ZOOM  1 FM  2 VHF  3 UHF  4 ALL  H HOLD  M MAX/MEAN  +/- LEVEL  P PAUSE  Q QUIT  Z WHEEL  V VBW");
 	if (ptr_seen) {
 		rect(back, ptr_x - 10, ptr_y, 21, 1, RGB(255, 255, 255));
 		rect(back, ptr_x, ptr_y - 10, 1, 21, RGB(255, 255, 255));
@@ -1732,12 +1760,46 @@ static void keys_exit(void)
 	fcntl(0, F_SETFL, fcntl(0, F_GETFL) & ~O_NONBLOCK);
 }
 
-static void view(int mhz_a, int mhz_b)
+/* Keeps the span at the ends of the band. What is known of the new view stays on the plot until
+ * the sweep reaches it (the full band takes 17 s). The waterfall starts over. */
+static void view(int hz_a, int hz_b)
 {
-	set_range(mhz_a, mhz_b);
+	static int16_t old_trace[COLS], old_hold[COLS];
+	int old_a = start_hz, old_span = stop_hz - start_hz;
+	int band_a = RF_MIN_MHZ * 1000000, band_b = RF_MAX_MHZ * 1000000, span = hz_b - hz_a;
+
+	span = span < SPAN_MIN_HZ ? SPAN_MIN_HZ : span > band_b - band_a ? band_b - band_a : span;
+	hz_a = hz_a < band_a ? band_a : hz_a > band_b - span ? band_b - span : hz_a;
+	memcpy(old_trace, trace, sizeof(trace));
+	memcpy(old_hold, hold, sizeof(hold));
+	set_range(hz_a, hz_a + span);
+	for (int c = 0; old_span > 0 && c < COLS; c++) {
+		int64_t o = (int64_t)((col_hz[c] + col_hz[c + 1]) / 2 - old_a) * COLS / old_span;
+
+		if (o >= 0 && o < COLS) {
+			trace[c] = old_trace[o];
+			hold[c] = old_hold[o];
+		}
+	}
 	draw_grid();
+	ptr_moved = 1;		/* show it now, not after the next tuning */
 	if (radio_want)
 		rescan = 1;	/* a new view needs one sweep; the radio comes back after it */
+}
+
+/* One wheel step: the frequency under column col stays where it is on the screen */
+static void zoom_at(int col, int in)
+{
+	int span = stop_hz - start_hz, f = col_hz[col];
+	int64_t ns = in ? span * 2LL / 3 : span * 3LL / 2;
+	int64_t band = (RF_MAX_MHZ - RF_MIN_MHZ) * 1000000LL;
+
+	ns = ns < SPAN_MIN_HZ ? SPAN_MIN_HZ : ns > band ? band : ns;
+	if (ns == span)
+		return;
+	int a = f - (int)((int64_t)(f - start_hz) * ns / span);
+
+	view(a, a + (int)ns);
 }
 
 static void marker_to(int hz, int listen)
@@ -1758,24 +1820,24 @@ static void apply_key(int k)
 {
 	static int preset;
 	static const int pre[][2] = { { 88, 108 }, { 174, 230 }, { 470, 790 }, { 44, 880 } };
-	int a = start_hz / 1000000, b = stop_hz / 1000000, c = (a + b) / 2, span = b - a;
+	int a = start_hz, b = stop_hz, c = (a + b) / 2, span = b - a;
 
 	switch (k) {
 	case 'a':
-		view(a - (span / 4 ? span / 4 : 1), b - (span / 4 ? span / 4 : 1));
+		view(a - span / 4, b - span / 4);
 		break;
 	case 'd':
-		view(a + (span / 4 ? span / 4 : 1), b + (span / 4 ? span / 4 : 1));
+		view(a + span / 4, b + span / 4);
 		break;
 	case 'w':
-		view(c - span / 4, c + (span + 3) / 4);
+		view(c - span / 4, c + span / 4);
 		break;
 	case 's':
 		view(c - span, c + span);
 		break;
 	case '1': case '2': case '3': case '4':
 		preset = k - '1';
-		view(pre[preset][0], pre[preset][1]);
+		view(pre[preset][0] * 1000000, pre[preset][1] * 1000000);
 		break;
 	case 'h':
 		hold_on = !hold_on;
@@ -1798,10 +1860,16 @@ static void apply_key(int k)
 			top_db -= 5;
 		break;
 	case 'L':
-		marker_to(marker_hz - 100000, 0);
+		marker_to(marker_hz - snap_step(), 0);
 		break;
 	case 'R':
-		marker_to(marker_hz + 100000, 0);
+		marker_to(marker_hz + snap_step(), 0);
+		break;
+	case 'z':
+		wheel_zoom = !wheel_zoom;
+		break;
+	case 'v':
+		avg_set(AVG * 2 > AVG_MAX ? 1 : AVG * 2);
 		break;
 	case '\r': case '\n':
 		radio_want = !radio_want;
@@ -1851,9 +1919,11 @@ static void apply_key(int k)
 /*
  * Input is read often (also while the tuner settles, see ui_wait) but acted on only between
  * tunings: a view or marker change in the middle of one would mix it with the new state.
- * The pointer itself moves at once. Queue values: a key for apply_key, or KQ_CLICK + column.
+ * The pointer itself moves at once. Queue values: a key for apply_key, or KQ_CLICK or a wheel step + column.
  */
 #define KQ_CLICK 0x10000
+#define KQ_WHEEL_UP 0x20000
+#define KQ_WHEEL_DN 0x30000
 static int kq[64];
 static unsigned kq_w, kq_r;
 
@@ -1874,6 +1944,13 @@ static void ptr_add(int dx, int dy)
 	ptr_seen = ptr_moved = 1;
 }
 
+static void wheel_put(int up)
+{
+	int in_plot = ptr_x >= PLOT_X && ptr_x < PLOT_X + COLS;
+
+	kq_put((up ? KQ_WHEEL_UP : KQ_WHEEL_DN) + (in_plot ? ptr_x - PLOT_X : COLS / 2));
+}
+
 static void poll_input(void)
 {
 	static int esc;
@@ -1890,6 +1967,8 @@ static void poll_input(void)
 #ifdef PTR_TEST
 		} else if (ch == 'x') {		/* pointer from the serial console, for testing */
 			ptr_add(ptr_x > W - 40 ? -ptr_x : 37, ptr_y > H - 40 ? -ptr_y : 29);
+		} else if (ch == 'y' || ch == 'u') {	/* wheel from the serial console, for testing */
+			wheel_put(ch == 'y');
 #endif
 		} else {
 			kq_put(ch);
@@ -1912,6 +1991,7 @@ static void poll_input(void)
 				{ KEY_P, 'p' }, { KEY_Q, 'q' }, { KEY_B, 'b' },
 				{ KEY_LEFTBRACE, '[' }, { KEY_RIGHTBRACE, ']' },
 				{ KEY_COMMA, ',' }, { KEY_DOT, '.' }, { KEY_C, 'c' },
+				{ KEY_Z, 'z' }, { KEY_V, 'v' },
 			};
 
 			if (e.type == EV_REL) {
@@ -1921,7 +2001,7 @@ static void poll_input(void)
 					ptr_add(0, e.value);
 				else if (e.code == REL_WHEEL)
 					for (int k = e.value; k; k += k < 0 ? 1 : -1)
-						kq_put(k > 0 ? 'R' : 'L');
+						wheel_put(k > 0);
 				continue;
 			}
 			if (e.type != EV_KEY || !e.value)
@@ -1929,6 +2009,10 @@ static void poll_input(void)
 			if (e.code == BTN_LEFT && e.value == 1) {
 				if (ptr_x >= PLOT_X && ptr_x < PLOT_X + COLS && ptr_y < WF_Y + WF_H)
 					kq_put(KQ_CLICK + ptr_x - PLOT_X);
+				continue;
+			}
+			if (e.code == BTN_MIDDLE && e.value == 1) {
+				kq_put('z');
 				continue;
 			}
 			if (e.code == BTN_RIGHT && e.value == 1) {
@@ -1954,7 +2038,14 @@ static void apply_queue(void)
 	while (kq_r != kq_w) {
 		int k = kq[kq_r++ % 64];
 
-		if (k >= KQ_CLICK)
+		if (k >= KQ_WHEEL_UP) {
+			int up = k < KQ_WHEEL_DN;
+
+			if (wheel_zoom)
+				zoom_at(k - (up ? KQ_WHEEL_UP : KQ_WHEEL_DN), up);
+			else
+				apply_key(up ? 'R' : 'L');
+		} else if (k >= KQ_CLICK)
 			marker_to(snap_hz(k - KQ_CLICK), 1);
 		else
 			apply_key(k);
@@ -1965,18 +2056,44 @@ static void apply_queue(void)
 static int ui_ready;
 static double last_render;
 
+static double last_poll;
+
+/*
+ * Between FFTs, for the long measurements of a narrow VBW. A frame costs as much as a whole
+ * tuning at the default VBW, so this does nothing there (polling here would also make the main
+ * loop draw a second frame per tuning): the sweep with a moving pointer took twice as long.
+ */
+static void ui_slow_tick(void)
+{
+	if (!ui_ready || now() - last_poll < 0.05)
+		return;
+	poll_input();
+	if (ptr_moved && now() - last_render > 0.08) {
+		ptr_moved = 0;
+		render();
+		last_render = now();
+	}
+	last_poll = now();
+}
+
 #ifndef HOST
+static void ui_tick(void)
+{
+	if (ui_ready) {
+		poll_input();
+		if (ptr_moved) {
+			ptr_moved = 0;
+			render();
+			last_render = now();
+		}
+		last_poll = now();
+	}
+}
+
 static void ui_wait(double until)
 {
 	while (now() < until) {
-		if (ui_ready) {
-			poll_input();
-			if (ptr_moved) {
-				ptr_moved = 0;
-				render();
-				last_render = now();
-			}
-		}
+		ui_tick();
 		usleep(1000);
 	}
 }
@@ -2002,7 +2119,7 @@ static void scan_list(int a, int b)
 	for (int w = a; w < b && !quit; w += 10) {
 		int fl, np;
 
-		set_range(w, w + 10);
+		set_range(w * 1000000, (w + 10) * 1000000);
 		for (tune_hz = first_tune; tune_hz <= last_tune; tune_hz += cur_step) {
 			tune(tune_hz);
 			measure();
@@ -2096,14 +2213,16 @@ int main(int argc, char **argv)
 		fprintf(stderr, "FFT size must be a power of 2, 256..16384\n");
 		return 1;
 	}
-	cap_n = N * (2 * AVG) + N / 2;
-	cap = calloc(cap_n, sizeof(*cap));
+	cap_max = N * (2 * CAP_FFTS) + N / 2;
+	cap = calloc(cap_max, sizeof(*cap));
 	if (!cap) {
 		perror("calloc");
 		return 1;
 	}
-	memset(cap, 0, cap_n * sizeof(*cap));
-	mlockall(MCL_CURRENT | MCL_FUTURE);
+	memset(cap, 0, cap_max * sizeof(*cap));
+#ifndef HOST
+	mlockall(MCL_CURRENT | MCL_FUTURE);	/* on a PC the limit for a user makes malloc fail */
+#endif
 	{
 		struct sched_param sp = { .sched_priority = 1 };
 
@@ -2133,7 +2252,7 @@ int main(int argc, char **argv)
 	adc_gain = *(volatile uint16_t *)(dmd + ADC_GAIN) & 15;
 	adc_gain_set(adc_gain);
 #endif
-	view(a, b);
+	view(a * 1000000, b * 1000000);
 	ui_ready = 1;
 	fflush(stdout);
 
