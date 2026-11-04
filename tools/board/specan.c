@@ -1387,6 +1387,7 @@ static int find_peaks(struct peak *pk, int maxp, int *floor_out)
 
 /* Mouse pointer in screen pixels */
 static int ptr_x = 960, ptr_y = 300, ptr_seen, ptr_moved;
+static int ptr_last_x = 960, ptr_last_y = 300, ptr_wipe;
 
 /* Plot column to a frequency on the 100 kHz station grid */
 static int snap_hz(int col)
@@ -1397,6 +1398,7 @@ static int snap_hz(int col)
 static void render(void)
 {
 	struct peak pk[8];
+	double t0 = now(), t_trace, t_copy, t_flip;
 	int fl, np = find_peaks(pk, 8, &fl);
 	char line[160];
 	int off = 0;
@@ -1441,8 +1443,10 @@ static void render(void)
 		for (int j = 0; j < PLOT_H; j += 1 + !radio_on)
 			screen_buf[j * COLS + x] = radio_on ? RGB(255, 80, 80) : RGB(200, 200, 80);
 	}
+	t_trace = now();
 	for (int j = 0; j < PLOT_H; j++)
 		memcpy(row + j * W, screen_buf + j * COLS, COLS * sizeof(*screen_buf));
+	t_copy = now();
 
 	/* labels are drawn straight into the back buffer */
 	rect(back, 0, 0, W, PLOT_Y, 0);
@@ -1472,6 +1476,20 @@ static void render(void)
 	}
 
 	draw_axes(back);
+	/* only the plot is redrawn every frame: wipe the pointer from the rest in both buffers */
+	if (ptr_x != ptr_last_x || ptr_y != ptr_last_y) {
+		ptr_last_x = ptr_x;
+		ptr_last_y = ptr_y;
+		ptr_wipe = 2;
+	}
+	if (ptr_wipe) {
+		ptr_wipe--;
+		rect(back, 0, PLOT_Y, PLOT_X, WF_Y + WF_H - PLOT_Y, 0);
+		rect(back, PLOT_X + COLS, 0, W - PLOT_X - COLS, H, 0);
+		rect(back, 0, PLOT_Y + PLOT_H, W, WF_Y - PLOT_Y - PLOT_H, 0);
+		draw_axes(back);
+		wf_dirty = wf_dirty > 1 ? wf_dirty : 1;
+	}
 	if (wf_dirty) {
 		for (int j = 0; j < WF_H; j++) {
 			int r = (wf_row - 1 - j + WF_H) % WF_H;
@@ -1487,8 +1505,12 @@ static void render(void)
 		rect(back, ptr_x - 10, ptr_y, 21, 1, RGB(255, 255, 255));
 		rect(back, ptr_x, ptr_y - 10, 1, 21, RGB(255, 255, 255));
 	}
+	t_flip = now();
 	fb_flip();
 
+	if (verbose)
+		printf("render ms: trace %.1f, plot copy %.1f, text %.1f, flip %.1f\n", (t_trace - t0) * 1e3,
+		       (t_copy - t_trace) * 1e3, (t_flip - t_copy) * 1e3, (now() - t_flip) * 1e3);
 	if (verbose && np) {
 		printf("sweep %d %.2fs floor %d peaks:", sweep_n, last_sweep_s, fl);
 		for (int i = 0; i < np; i++) {

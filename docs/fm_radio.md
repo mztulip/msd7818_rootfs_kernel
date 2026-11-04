@@ -10,6 +10,12 @@ Tested on the board with a piece of wire on the floor as the antenna. Sound is
 mono and noisy with that antenna. The mouse was tested through a USB hub; the USB
 keyboard and front panel keys were not tested.
 
+![specan on HDMI: spectrum of the FM band, listening to 101.0 MHz, waterfall below](img/specan_radio.png)
+
+Listening to 101.0 MHz (red marker). The tall lines at 90 and 96 MHz are the box's
+own 6 MHz comb; 99.9 and 101.0 MHz are real stations, which is why they come and go in
+the waterfall while the comb stays constant.
+
 ## Running it
 
 ```sh
@@ -98,6 +104,10 @@ down), cause unknown. Details: [pl/falszywe_sygnaly.md](pl/falszywe_sygnaly.md),
 `tools/board/fmrx.c` records one channel as I/Q (`fmrx RF_KHZ TUNE_MHZ SECONDS FILE.i8 [BIN]`).
 Fetch it with `tools/serial/uart_get.py` and demodulate on the PC with `tools/fm_demod.py`,
 which also prints the pilot test. `fmrx` still has the 1 s clicks.
+
+The other ADC tools: `tools/board/dmdts.c` (timestamped samples, spectra with
+`tools/adc_spectrum.py`), `tools/board/dmdraw.c` (raw samples and statistics),
+`tools/board/dmdbank.c` (demod RIU bank dump; reading bank `0x1116` hangs the board).
 
 Test without hardware: `gcc -DHOST -O2 -o specan_host tools/board/specan.c -lm &&
 ./specan_host -v -x 2 88 108` simulates the tuner and ADC and writes a PPM.
