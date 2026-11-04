@@ -8,8 +8,9 @@ Oznaczenia: ✅ zmierzone na płycie, 🔍 wynika z kodu lub schematu, ❓ hipot
 
 | Stopień | Sterowanie | Stan |
 |---|---|---|
-| LNA i RF w MxL5007T | brak rejestru w sterowniku Linuksa; opis znaleziony w sieci podaje, że układ reguluje RF sam, bez demodulatora ❓ | nie mamy sterowania |
-| IF w MxL5007T | wejście napięciowe `VAGC`, na schemacie z pinu `IF_AGC` SoC 🔍 | poziomu PWM nie umiemy jeszcze ustawiać ❓ |
+| LNA i RF w MxL5007T | brak rejestru w sterowniku Linuksa; opis znaleziony w sieci podaje, że układ reguluje RF sam, bez demodulatora ❓ | nie znaleziono (przeszukano tylko część rejestrów) |
+| **Wzmocnienie w MxL5007T** | rejestr `0x78` (nieopisany), domyślnie `0x18` | **działa ✅, ok. 18 dB, klawisze `,` `.`** |
+| Wejście `VAGC` tunera, na schemacie z pinu `IF_AGC` SoC 🔍 | pętla ARW demodulatora, wymuszenie pinu | bez efektu ✅ (niżej) |
 | Pad `IF_AGC` w SoC | RIU `0x101E3A` bit 0 (fiz. `0x1F203C74`), `HAL_DMD_IFAGC_Tristate` 🔍 | przełączenie bez efektu ✅ |
 | Pad `RF_AGC` w SoC | ten sam rejestr, bit 1 🔍 | przełączenie bez efektu ✅ |
 | **Wzmocnienie ADC w SoC** | RIU `0x112816` (fiz. `0x1F22502C`), po 4 bity na kanał, po `tuner_init` `0x0505` | **działa ✅** |
@@ -67,9 +68,37 @@ Dane: `binaries/spurs/bez_anteny_szum.txt`. Antena odłączona przez użytkownik
 - **Stacje znikają ✅,** więc to nie były artefakty.
 - **HDMI 742,5 MHz wchodzi głównie przez antenę ✅:** kabel antenowy łapie promieniowanie HDMI (możliwe, że z kabla HDMI ❓). Inne prążki HDMI w tym pomiarze nie były sprawdzane.
 
+## Rejestry tunera i pętla ARW (2026-11-04)
+
+Dane: `binaries/spurs/tuner_gain_sweep.txt`, `tuner_override_scan.txt`, `tuner_rejestry_test.txt`, `agc_pin_test.txt`, `mxl_dump_*.txt`. Narzędzia: `specan -W REG=VAL,...` (miękki reset, zapis przed `0x01`, odczyt kontrolny), `specan -R -v` (zrzut rejestrów). Kontrola dodatnia: `02=06` (IF 6 MHz) przesuwa prążki ✅.
+
+**`0x78` to wzmocnienie ✅** (skan: każdy bit każdego rejestru `OVERRIDE` z inicjalizacji, 88 ustawień, odchyłki szumu i prążka). Poziom RX zmienia się też na żywo, po zapisie bez resetu ✅.
+
+| `0x78` | Szum dB | Prążek 96 MHz dB | Pilot 101,0 dB | Pilot 99,9 dB |
+|---|---|---|---|---|
+| `0x00` | −61,9 | −45,8 | +26,7 | +13,6 |
+| `0x08` | −61,2 | −38,6 | +26,9 | +17,3 |
+| `0x10` | −53,7 | −30,4 | +27,1 | +22,0 |
+| `0x14` | −49,4 | −26,9 | +26,0 | +24,4 |
+| `0x18` (domyślne) | −45,5 | −24,1 | +27,1 | +25,0 |
+| `0x1A` | −43,9 | −21,1 | +26,4 | +24,2 |
+| `0x1C` | −43,9 | −21,2 | +27,0 | +23,7 |
+| `0x1F` | −43,8 | −22,5 | +26,9 | +26,0 |
+
+Wniosek: powyżej `0x18` wzmocnienie prawie nie rośnie (ok. 1,7 dB, do `0x1A`), a pilot się nie poprawia. Poniżej słabsza stacja traci ✅. Domyślne ustawienie jest praktycznie optymalne, a `0x78` działa za miejscem, w którym powstaje dominujący szum ❓. Szum −62 dB przy `0x00` to już granica ADC ❓.
+
+**Bez efektu ✅:** poziomy wyjścia IF i tryb kablowy (`09`, `0A`, `0B`), tryby `06` (ISDB-T, ATSC), przelot `04` (po resetie `0`, w działającym układzie odczyt `1`), pozostałe bity rejestrów `OVERRIDE`. Pojedynczy odczyt `30=00` dał −4,9 dB, ale w powtórce nic ❓. `0x78` = `0x38` gubi prążek ❓. Rejestrów `0x1F`–`0x22` skan nie objął, bo `tune()` zapisuje je od nowa.
+
+**Pętla ARW demodulatora ✅:** w MBoocie `tuner_init`, `tuner_demodtype 1`, `tuner_tune 474000 3` (bez blokady, `FE un-lock`) uruchamiają ją, a po starcie Linuksa dalej działa: `0x2111` = `0x90`, referencja `0x2113` = `0x96`, po selektorze `0x2122` = 3 słowo `0x2124/25` zmienia się (`0xD02B`, `0xD073`), a po przestrojeniu nasyca się na `0xFF00`. Szum, prążek i pilot są takie same jak bez niej. Wymuszanie pinu (rejestr `0x112830`, `0x0011`, `0x0031`, `0x0010`, `0x0030`, `0x0001`; układ bitów z MSB124x 🔍) też nic nie zmienia. Tuner nie reaguje na ten pin albo pin nie dochodzi do tunera; bez pomiaru napięcia na `VAGC` tego nie rozstrzygniemy ❓.
+
+Tuner: `0xB6`, `0xB8` zmieniają się przy każdym odczycie i nie widać w nich związku z sygnałem ❓; `0xB5` zmienia się z pasmem; tryb kablowy odbija się w `0xB1`, `0xCF`–`0xD1`.
+
+Oryginalny firmware (`binaries/ghidra_stock/all.c`, `FUN_80180348`, `FUN_801a9808`) i MBoot konfigurują tuner tak samo: tryb DVB-T, 24 MHz, IF 4,57 MHz, a poziom IF i pozostałe pola zerowe. Nie ma tam regulacji wzmocnienia; tabele jak w sterowniku Linuksa.
+
 ## Co dalej
 
-- Ustawienie poziomu `IF_AGC` (PWM) wymaga znalezienia rejestru. Skoro większość szumu jest przed ADC, zysk w stosunku sygnału do szumu jest wątpliwy ❓.
+- Skan pozostałych rejestrów tunera może znaleźć sterowanie LNA ❓.
+- Pomiar napięcia na `VAGC` multimetrem przy pracującej pętli i przy wymuszaniu pinu.
 - Największy spodziewany zysk: lepsza antena ❓.
 
 Uwaga: dwie jednoczesne kopie `specan` nawzajem resetują DSP i nie potrafią wtedy wyjść nawet po `SIGTERM` (zostaje `kill -9`, a potem ręczne przywrócenie `0x101E39` i `sched_rt_runtime_us`) ✅.

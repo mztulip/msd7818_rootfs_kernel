@@ -22,6 +22,7 @@
  *   specan -S -D -M ...   also dump the whole trace (D WINDOW v v v ... in dB*16), -M mean per column
  *   specan -R [-a AVG] START_MHZ STOP_MHZ   raw peaks of each single tuning, 1 MHz steps
  *   -C turns the tuner clock output off (for tracing spurs)
+ *   -W REG=VAL[,REG=VAL...] tuner register writes after its init, hex (for experiments)
  *   defaults: -n 4096 -a 2 -s 20, 88 108
  *
  * FM radio on HDMI, live: click a station with a USB mouse, or move the marker with the
@@ -32,7 +33,8 @@
  * Keys (serial console, USB keyboard): left/right marker -/+100 kHz, Enter radio on/off,
  *   r new sweep, a/d move the view, up/down or w/s zoom, 1-4 presets (FM, VHF, UHF, all),
  *   h max hold, m max/mean per column, +/- reference level (volume while listening),
- *   [ ] ADC gain (does not change the signal to noise ratio, it can only avoid clipping),
+ *   , . tuner gain, [ ] ADC gain (neither improves the signal to noise ratio over the default;
+ *   they can only avoid clipping),
  *   b tuner filter while listening (8, 7, 6 MHz), p pause, q quit.
  *   Front panel: CH+/CH- marker, POWER radio on/off.
  *
@@ -158,6 +160,7 @@ static inline uint32_t cc(void)
 }
 
 static void ui_wait(double until);
+static const char *tuner_writes;
 static int bw_reg = 0x3f;		/* tuner filter: 0x15, 0x2a, 0x3f = 6, 7, 8 MHz */
 
 static void mxl_w(uint8_t reg, uint8_t val)
@@ -195,11 +198,41 @@ static void mxl_init(void)
 		{ 0x02, 0x03 }, { 0x03, 0x48 }, { 0x05, 0x04 }, { 0x06, 0x11 },
 		{ 0x2e, 0x15 }, { 0x30, 0x10 }, { 0x45, 0x58 }, { 0x48, 0x19 },
 		{ 0x52, 0x03 }, { 0x53, 0x44 }, { 0x6a, 0x4b }, { 0x76, 0x00 },
-		{ 0x78, 0x18 }, { 0x7a, 0x17 }, { 0x85, 0x06 }, { 0x01, 0x01 },
+		{ 0x78, 0x18 }, { 0x7a, 0x17 }, { 0x85, 0x06 },
 	};
 
+	/* soft reset, then the table; experiments go in before the chip is enabled */
+	if (tuner_writes) {
+		uint8_t rst = 0xff;
+		struct i2c_msg msg = { .addr = TUNER_ADDR, .flags = 0, .len = 1, .buf = &rst };
+		struct i2c_rdwr_ioctl_data d = { .msgs = &msg, .nmsgs = 1 };
+
+		if (ioctl(i2c, I2C_RDWR, &d) < 0)
+			perror("i2c reset");
+		usleep(10000);
+	}
 	for (unsigned i = 0; i < sizeof(tab) / sizeof(tab[0]); i++)
 		mxl_w(tab[i][0], tab[i][1]);
+	if (no_clkout)
+		mxl_w(0x03, 0x40);
+	for (const char *p = tuner_writes; p && *p;) {
+		unsigned r, v;
+		int used;
+
+		if (sscanf(p, "%x=%x%n", &r, &v, &used) != 2)
+			break;
+		mxl_w(r, v);
+		printf("tuner reg %02x: wrote %02x, reads %02x\n", r, v, mxl_r(r));
+		p += used + (p[used] == ',');
+	}
+	mxl_w(0x01, 0x01);	/* TOP_MASTER_ENABLE */
+}
+
+/* All tuner registers, to look for what changes with the signal */
+static void mxl_dump(void)
+{
+	for (int r = 0; r < 256; r++)
+		printf("%s%02x%s", r % 16 ? " " : "MXL ", mxl_r(r), r % 16 == 15 ? "\n" : "");
 }
 
 static void tune(int hz)
@@ -256,8 +289,6 @@ static void hw_init(void)
 	if (mxl_r(0xd9) != 0x14)
 		fprintf(stderr, "warning: tuner id 0x%02x, expected 0x14\n", mxl_r(0xd9));
 	mxl_init();
-	if (no_clkout)
-		mxl_w(0x03, 0x40);
 }
 
 #else /* HOST */
@@ -727,6 +758,24 @@ static void adc_gain_set(int g)
 	*r = (uint16_t)(g | g << 4 << 4);
 #endif
 	adc_gain = g;
+}
+
+/* Tuner register 0x78 (undocumented, found by scanning): about 18 dB, default 0x18 */
+static const uint8_t tuner_gains[] = { 0x00, 0x08, 0x10, 0x14, 0x18, 0x1a };
+static int tuner_gain = 4;
+
+static void tuner_gain_step(int d)
+{
+	int g = tuner_gain + d;
+
+	if (g < 0 || g >= (int)sizeof(tuner_gains))
+		return;
+	tuner_gain = g;
+#ifndef HOST
+	mxl_w(0x78, tuner_gains[g]);
+#endif
+	if (verbose)
+		printf("tuner gain reg 0x78 = 0x%02x\n", tuner_gains[g]);
 }
 
 /* ---- radio ---- */
@@ -1519,7 +1568,8 @@ static void render(void)
 	if (paused)
 		off += snprintf(line + off, sizeof(line) - off, "  PAUSED");
 	text(back, 8, 4, RGB(255, 255, 255), "%s", line);
-	text(back, 8, 24, RGB(170, 220, 170), "DBFS  FLOOR %d  ADC %X", fl, adc_gain & 15);
+	text(back, 8, 24, RGB(170, 220, 170), "DBFS  FLOOR %d  ADC %X  TUNER %02X", fl, adc_gain & 15,
+	     tuner_gains[tuner_gain]);
 	if (radio_on)
 		text(back, 400, 24, RGB(255, 120, 120), "RADIO %.1f MHZ  PILOT %+.0f DB  RX %.0f DB  VOL %d  FILTER %d",
 		     marker_hz / 1e6, pilot_db, rx_db, volume, radio_bw);
@@ -1723,6 +1773,12 @@ static void apply_key(int k)
 	case 'r':
 		rescan = 1;
 		break;
+	case ',':
+		tuner_gain_step(-1);
+		break;
+	case '.':
+		tuner_gain_step(1);
+		break;
 	case '[':
 		if (adc_gain < 15)
 			adc_gain_set(adc_gain + 1);
@@ -1813,6 +1869,7 @@ static void poll_input(void)
 				{ KEY_H, 'h' }, { KEY_M, 'm' }, { KEY_EQUAL, '+' }, { KEY_MINUS, '-' },
 				{ KEY_P, 'p' }, { KEY_Q, 'q' }, { KEY_B, 'b' },
 				{ KEY_LEFTBRACE, '[' }, { KEY_RIGHTBRACE, ']' },
+				{ KEY_COMMA, ',' }, { KEY_DOT, '.' },
 			};
 
 			if (e.type == EV_REL) {
@@ -1939,6 +1996,10 @@ static void raw_list(int a, int b)
 		qsort(srt, N / 2 + 1, sizeof(*srt), cmp16);
 		med = srt[N / 4];
 		printf("T %d med %.1f\n", mhz, med / (double)DB_UNIT);
+#ifndef HOST
+		if (verbose)
+			mxl_dump();
+#endif
 		for (int k = 2; k < N / 2 - 1; k++)
 			if (db[k] > med + 12 * DB_UNIT && db[k] >= db[k - 1] && db[k] > db[k + 1]) {
 				/* parabola through the dB values: about 1/10 of a bin */
@@ -1961,7 +2022,7 @@ int main(int argc, char **argv)
 	int opt, a = 88, b = 108, exit_after = 0, scan = 0, raw = 0;
 	double last_rescan = 0;
 
-	while ((opt = getopt(argc, argv, "n:a:t:s:vx:SRCDMF:B:O:")) != -1) {
+	while ((opt = getopt(argc, argv, "n:a:t:s:vx:SRCDMF:B:O:W:")) != -1) {
 		switch (opt) {
 		case 'n': N = atoi(optarg); break;
 		case 'a': AVG = atoi(optarg); break;
@@ -1974,6 +2035,9 @@ int main(int argc, char **argv)
 		case 'D': dump = 1; break;
 		case 'M': mode_mean = 1; break;
 		case 'B': radio_bw = atoi(optarg); break;
+#ifndef HOST
+		case 'W': tuner_writes = optarg; break;
+#endif
 		case 'O': radio_off_mhz = atoi(optarg); break;
 		case 'F': marker_hz = atoi(optarg) * 1000; marker_set = 1; radio_want = 1; radio_pending = 1; break;
 		case 'x': exit_after = atoi(optarg); break;

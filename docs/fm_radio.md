@@ -43,6 +43,7 @@ chmod +x /tmp/specan; /tmp/specan 88 108     # or -F 101000 to start listening a
 | Enter | radio on/off |
 | `r` | new sweep (sound stops for about 2 s) |
 | `+` / `-` | volume while listening, otherwise reference level |
+| `,` / `.` | tuner gain down/up, register `0x78` (about 18 dB; the default is practically the best) |
 | `[` / `]` | ADC gain down/up (avoids clipping; does not improve reception) |
 | `b` | tuner filter while listening: 8, 7, 6 MHz (no measurable gain) |
 | `a`/`d`, up/down or `w`/`s` | move the view, zoom |
@@ -53,7 +54,8 @@ The sweep stops while listening. The status line shows the 19 kHz pilot level
 against an empty 17 kHz; it jumps around on weak stations.
 
 Diagnostics: `-v` peaks on the console, `-S` list all peaks without the screen,
-`-R` raw peaks of each single tuning, `-C` tuner clock output off.
+`-R` raw peaks of each single tuning (with `-v` also a tuner register dump),
+`-C` tuner clock output off, `-W REG=VAL,...` tuner register writes before it is enabled.
 
 If USB devices time out (`error -145`) after one was unplugged, stop `specan` and
 run `tools/board/usbfix.sh`, which reloads the EHCI driver. What exactly triggers
@@ -88,6 +90,12 @@ The tuner controls its RF gain on its own. The ADC gain in the SoC (RIU `0x11281
 smaller value = more gain, about 12 dB) raises noise and signal together, so the noise
 is made before the ADC and more gain does not help weak stations. A narrower tuner
 filter gave no measurable gain either.
+
+The tuner has a gain in undocumented register `0x78` (found by scanning bits, about 18 dB,
+default `0x18`). Going lower hurts weak stations, going higher barely adds level and no
+pilot. IF level, cable mode, other tuner modes and the demod AGC loop, which does run after
+MBoot `tuner_tune`, changed nothing. No LNA control was found; only part of the tuner's
+registers was scanned.
 
 With the antenna unplugged the noise floor stays the same (-45.7 against -45.5 dB) and so
 does the 6 MHz comb, while the stations and the 742.5 MHz HDMI line go away. So the noise
