@@ -9,6 +9,12 @@ written from the MBoot prompt with a FAT32 pendrive, see
 [Flash system](#flash-system-linux-in-the-boxs-own-flash). How to build them
 yourself (kernel, rootfs, fbDOOM): [build_manual.md](build_manual.md).
 
+**Live spectrum analyzer and FM radio on HDMI:** click a station with a USB mouse
+(or pick it with the arrow keys) and listen. Source: `tools/board/specan.c`, how to
+run it: [docs/fm_radio.md](docs/fm_radio.md).
+
+![specan on HDMI: spectrum of the FM band, listening to 101.0 MHz, waterfall below](docs/img/specan_radio.png)
+
 Kernel source: https://github.com/mztulip/linux_msd781x (branch `mstar_v6_7_rebase`),
 a fork of https://github.com/maniekx86/linux_msd781x/commits/mstar_v6_7_rebase/
 with the WIWA HD95 (MSD7818) changes listed below. Two configurations:
