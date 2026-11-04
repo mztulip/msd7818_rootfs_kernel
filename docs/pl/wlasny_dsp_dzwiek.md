@@ -67,7 +67,7 @@ Tabela fabrycznego initu (`MDrv_AUDIO_WriteInitTable`, 192 zapisy) po zimnym sta
 
 `make clean; make NOSDL=1 OWN_SOUND=1` (Makefile w `fbDOOM/fbdoom`, `i_mstarsound.c` dołącza wtedy `own_audio.h`). Na płytce `/home/fbdoom_own`. Nagranie dema: głośność zmienia się w czasie tak samo jak w wersji z kodem MStara (`/home/fbdoom`), ale głośniej (średnio 56 wobec 48), a `-nosound` daje płaskie nagranie (44). `^C` na konsoli szeregowej kończy grę i przywraca terminal, `stty sane` nie jest potrzebne (sprawdzone 2026-11-04).
 
-**Wyjście przez Ctrl+C** (poprawka 2026-11-04, we flashu od `rootfs_20261104.img`): `kbd_shutdown()` kończyła program przez `exit(0)` przed `I_Quit()`, więc `maudio_close()` się nie wykonywało, a SE dalej grał pierścień w kółko na HDMI aż do następnego programu audio. Teraz Ctrl+C woła samo `I_Quit()`. Starsza binarka `bin/fbdoom_sound` w publicznym repo nie ma tej poprawki. Sprawdzone przez grabber: po wyjściu cisza, kod wyjścia 0, terminal przywrócony. Grabber oddaje jeszcze ok. 260 ms wcześniejszego dźwięku, to jego bufor.
+**Wyjście przez Ctrl+C** (poprawka 2026-11-04, we flashu od `rootfs_20261104.img`): `kbd_shutdown()` kończyła program przez `exit(0)` przed `I_Quit()`, więc `maudio_close()` się nie wykonywało, a SE dalej grał pierścień w kółko na HDMI aż do następnego programu audio. Teraz Ctrl+C woła samo `I_Quit()`. `bin/fbdoom_sound` w publicznym repo ma ją od tego samego dnia (fbDOOM, gałąź `sound_only`: efekty bez muzyki; sprawdzone przez grabber na systemie z USB). Sprawdzone przez grabber: po wyjściu cisza, kod wyjścia 0, terminal przywrócony. Grabber oddaje jeszcze ok. 260 ms wcześniejszego dźwięku, to jego bufor.
 
 ## W systemie z flasha (od 2026-10-20)
 

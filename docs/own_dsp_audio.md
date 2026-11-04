@@ -110,15 +110,12 @@ is: without it the DSP counts frames but HDMI stays silent.
 
 `make clean; make NOSDL=1 OWN_SOUND=1 MSTAR_AUDIO_DIR=.../tools/board` in
 the [fbDOOM fork](https://github.com/mztulip/fbDOOM) builds the sound effects
-on `own_audio.h`; the result is `bin/fbdoom_sound`. Recorded attract demo:
+on `own_audio.h`. On branch `sound_only` the result is `bin/fbdoom_sound`;
+branch `master` adds music and gives `bin/fbdoom_music`. Recorded attract demo:
 the loudness follows the same course as the build with MStar's code, a bit
 louder; with `-nosound` the recording is flat. Run it as `bin/fbdoom`
 (see [getting_started.md](getting_started.md)). `^C` on the serial console
-quits and restores the terminal.
-
-`bin/fbdoom_music` and the flash system also stop the sound on `^C`.
-`bin/fbdoom_sound` is an older build: after `^C` the DSP keeps looping the
-last audio on HDMI until the next audio program runs.
+quits, stops the sound and restores the terminal.
 
 ## To do
 

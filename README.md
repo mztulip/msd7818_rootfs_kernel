@@ -44,7 +44,7 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `docs/own_dsp_audio.md` | sound on HDMI from **our own SE DSP program**, without MStar code: sample format, interrupt, `own_audio.h`, 4-register init |
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
 | `bin/fbdoom` | fbDOOM with double buffering, fast drawing and serial-console controls (source: https://github.com/mztulip/fbDOOM) |
-| `bin/fbdoom_sound` | the same fbDOOM **with sound effects** through our own DSP program (`OWN_SOUND=1`, no MStar code; HDMI). Older build: after `^C` it leaves the last audio looping on HDMI, see `docs/own_dsp_audio.md` |
+| `bin/fbdoom_sound` | the same fbDOOM **with sound effects** through our own DSP program (`OWN_SOUND=1`, no MStar code; HDMI); no music, source: fbDOOM branch `sound_only` |
 | `bin/fbdoom_music` | fbDOOM with sound effects **and music** (OPL2 emulation, `opl2.c`), static (musl), runs on both rootfs; the one in the flash system |
 | `flash/` | **flash system images**: `kernel.img` (mini kernel, LZMA), `logofix.img`, `rootfs.img` (squashfs: BusyBox, `fbdoom_music`, Freedoom E1M1), `md5sums.txt`. See [Flash system](#flash-system-linux-in-the-boxs-own-flash) |
 | `build_manual.md` | how to build the flash images from source: mini kernel, Buildroot rootfs, fbDOOM, IWAD |
