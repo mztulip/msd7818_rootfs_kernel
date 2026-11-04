@@ -47,6 +47,7 @@ Prążki z ostatniego skanu (`lista_koncowa_45-885.txt`), MHz:poziom dBFS:
 
 Próg listy to 8 dB nad szumem, więc brak na liście nie znaczy braku prążka. Najsilniejsze są wielokrotności 72 MHz (144, 216, 288, 648).
 
+- Nie wchodzi przez antenę ✅: po jej odłączeniu 96, 144, 216, 288, 432 MHz mają te same poziomy ([wzmocnienia_toru.md](wzmocnienia_toru.md)).
 - Niezależne od HDMI ✅: wyłączenie TMDS i PLL nie zmienia poziomów (tabela niżej).
 - Niezależne od wyjścia zegara tunera (`0x03` = `0x40`, opcja `-C`) ✅: 96, 144, 216, 288, 432 bez zmian. Pojedynczy odczyt 864 MHz spadł z −17 na −22 dB, bez powtórki.
 - Mechanizm ❓: 6 MHz = 24 MHz / 4, więc najpewniej harmoniczne referencji lub cyfrowego taktowania wewnątrz MxL5007T wracające na jego wejście RF. Nie sprawdzono, czy to wnętrze układu, czy tor na płytce przy tunerze.
@@ -65,6 +66,8 @@ Próg listy to 8 dB nad szumem, więc brak na liście nie znaczy braku prążka.
 | + PLL (`0x113066`, `0x11308A` = `0xFFFF`) | brak | **brak** | brak | **brak** | −10,9 / −4,0 / −10,1 / −13,9 |
 
 Czyli 148,5 i 371,25 idą ze sterownika wyjścia TMDS, a 222,75 i 742,5 częściowo lub całkiem z PLL ✅. Prążka 445,5 MHz w tym teście nie mierzono: należy do rodziny tylko z częstotliwości.
+
+Po odłączeniu anteny prążek 742,5 MHz spada poniżej progu ✅, więc przynajmniej ten wchodzi przez kabel antenowy, a nie przez wnętrze płyty.
 
 Start MBoota bez `run flashlogo` niczego tu nie zmienia, bo MBoot włącza obraz jeszcze przed znakiem zachęty (`GOP3 was in format 9`).
 

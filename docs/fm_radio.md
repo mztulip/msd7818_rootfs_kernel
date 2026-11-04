@@ -87,8 +87,12 @@ the failure is not known yet.
 The tuner controls its RF gain on its own. The ADC gain in the SoC (RIU `0x112816`,
 smaller value = more gain, about 12 dB) raises noise and signal together, so the noise
 is made before the ADC and more gain does not help weak stations. A narrower tuner
-filter gave no measurable gain either. A better antenna is the expected way forward,
-not yet tried. Numbers: [pl/wzmocnienia_toru.md](pl/wzmocnienia_toru.md).
+filter gave no measurable gain either.
+
+With the antenna unplugged the noise floor stays the same (-45.7 against -45.5 dB) and so
+does the 6 MHz comb, while the stations and the 742.5 MHz HDMI line go away. So the noise
+is the receiver's own and the antenna signal is below it: a better antenna or a low-noise
+preamp before the tuner is the expected way forward, not yet tried. Numbers: [pl/wzmocnienia_toru.md](pl/wzmocnienia_toru.md).
 
 ## What is in the spectrum
 

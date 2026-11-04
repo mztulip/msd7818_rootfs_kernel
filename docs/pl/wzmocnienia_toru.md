@@ -49,9 +49,26 @@ Dane: `binaries/spurs/filtr_tunera_test.txt`, `strojenie_if_test.txt`. Pilot sta
 - **Na filtrze 8 MHz położenie IF nie ma znaczenia ✅:** 101,0 MHz przy strojeniu 102, 103 i 104 MHz ma od +26,5 do +28,3 dB.
 - **Pomiary z różnych chwil są słabo porównywalne ✅:** 91,1 MHz przy tym samym strojeniu 94 MHz miało najpierw +6,2 i +8,4 dB, a później +0,5 i +1,3 dB. Sam sygnał tej stacji zmienia się w czasie (słaba antena? fading? ❓).
 
+## Pomiar bez anteny (2026-11-04)
+
+Dane: `binaries/spurs/bez_anteny_szum.txt`. Antena odłączona przez użytkownika, porównanie z pomiarami z anteną z tego samego dnia.
+
+| Co | Z anteną | Bez anteny |
+|---|---|---|
+| Szum przy F = 94 MHz | −45,5 dB | −45,7 dB |
+| Prążek 96 MHz (grzebień) | ok. −23,5 dB | −23,7 dB |
+| Prążek 216 MHz (grzebień) | −3,8 dB | −3,6 dB |
+| Pilot 101,0 MHz | ok. +26 dB | −0,7 dB (brak) |
+| Pilot 99,9 MHz | ok. +17 dB | −0,4 dB (brak) |
+| Prążek 742,5 MHz (HDMI) | ok. −18 dB | poniżej progu 12 dB nad szumem |
+
+- **Szum −45 dB to szum własny toru, nie sygnał z anteny ✅.** Sygnał z anteny jest od niego słabszy, więc każdy dB więcej z anteny to prawie cały dB lepszego stosunku sygnału do szumu. Dlatego spodziewany zysk daje lepsza antena albo wzmacniacz niskoszumny przed tunerem ❓ (jeszcze nie próbowane).
+- **Grzebień 6 MHz nie wchodzi przez antenę ✅,** co zgadza się ze związaniem z kwarcem tunera.
+- **Stacje znikają ✅,** więc to nie były artefakty.
+- **HDMI 742,5 MHz wchodzi głównie przez antenę ✅:** kabel antenowy łapie promieniowanie HDMI (możliwe, że z kabla HDMI ❓). Inne prążki HDMI w tym pomiarze nie były sprawdzane.
+
 ## Co dalej
 
-- Odłączenie anteny pokaże, czy szum −45 dB to tuner (zostanie), czy sygnał z anteny (spadnie) ❓.
 - Ustawienie poziomu `IF_AGC` (PWM) wymaga znalezienia rejestru. Skoro większość szumu jest przed ADC, zysk w stosunku sygnału do szumu jest wątpliwy ❓.
 - Największy spodziewany zysk: lepsza antena ❓.
 
