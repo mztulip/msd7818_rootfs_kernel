@@ -43,6 +43,8 @@ chmod +x /tmp/specan; /tmp/specan 88 108     # or -F 101000 to start listening a
 | Enter | radio on/off |
 | `r` | new sweep (sound stops for about 2 s) |
 | `+` / `-` | volume while listening, otherwise reference level |
+| `[` / `]` | ADC gain down/up (avoids clipping; does not improve reception) |
+| `b` | tuner filter while listening: 8, 7, 6 MHz (no measurable gain) |
 | `a`/`d`, up/down or `w`/`s` | move the view, zoom |
 | `1`-`4` | FM, VHF, UHF, whole band |
 | `h`, `m`, `p`, `q` | max hold, max/mean per column, pause, quit |
@@ -79,6 +81,14 @@ the failure is not known yet.
 - A 100 % real-time thread gets stopped by the kernel for 50 ms every second
   (`sched_rt_runtime_us`), which was an audible click. `specan` turns the limit off
   while it runs and restores it on exit, and the sampler briefly yields every 0.25 s.
+
+## Gain
+
+The tuner controls its RF gain on its own. The ADC gain in the SoC (RIU `0x112816`,
+smaller value = more gain, about 12 dB) raises noise and signal together, so the noise
+is made before the ADC and more gain does not help weak stations. A narrower tuner
+filter gave no measurable gain either. A better antenna is the expected way forward,
+not yet tried. Numbers: [pl/wzmocnienia_toru.md](pl/wzmocnienia_toru.md).
 
 ## What is in the spectrum
 

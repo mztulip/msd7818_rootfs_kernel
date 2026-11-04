@@ -32,9 +32,12 @@
  * Keys (serial console, USB keyboard): left/right marker -/+100 kHz, Enter radio on/off,
  *   r new sweep, a/d move the view, up/down or w/s zoom, 1-4 presets (FM, VHF, UHF, all),
  *   h max hold, m max/mean per column, +/- reference level (volume while listening),
- *   p pause, q quit. Front panel: CH+/CH- marker, POWER radio on/off.
+ *   [ ] ADC gain (does not change the signal to noise ratio, it can only avoid clipping),
+ *   b tuner filter while listening (8, 7, 6 MHz), p pause, q quit.
+ *   Front panel: CH+/CH- marker, POWER radio on/off.
  *
- *   -F RF_KHZ starts the radio at once
+ *   -F RF_KHZ starts the radio at once, -B MHZ tuner filter while listening,
+ *   -O MHZ how far above the station to tune (default 2)
  *
  * Build (own_audio.h, own_pcm_prog.h next to it):
  *   mipsel-buildroot-linux-musl-gcc -O2 -static -pthread -o specan specan.c -lm
@@ -155,6 +158,7 @@ static inline uint32_t cc(void)
 }
 
 static void ui_wait(double until);
+static int bw_reg = 0x3f;		/* tuner filter: 0x15, 0x2a, 0x3f = 6, 7, 8 MHz */
 
 static void mxl_w(uint8_t reg, uint8_t val)
 {
@@ -204,7 +208,7 @@ static void tune(int hz)
 	struct timespec ms = { 0, 1000000L };
 
 	mxl_w(0x0f, 0x00);
-	mxl_w(0x0c, 0x3f);	/* 8 MHz */
+	mxl_w(0x0c, bw_reg);
 	mxl_w(0x0d, n & 0xff);
 	mxl_w(0x0e, n >> 8);
 	mxl_w(0x1f, 0x87);
@@ -703,6 +707,28 @@ static void commit_upto(int hz)
 	}
 }
 
+/* ---- ADC gain ---- */
+
+#define ADC_GAIN	0x2502C		/* RIU 0x112816: 4 bits per channel, smaller = more gain */
+static int adc_gain = -1;
+
+static void adc_gain_set(int g)
+{
+#ifndef HOST
+	static int orig = -1;
+	volatile uint16_t *r = (volatile uint16_t *)(dmd + ADC_GAIN);
+
+	if (orig < 0)
+		orig = *r;
+	if (g < 0) {		/* put the original value back */
+		*r = (uint16_t)orig;
+		return;
+	}
+	*r = (uint16_t)(g | g << 4 << 4);
+#endif
+	adc_gain = g;
+}
+
 /* ---- radio ---- */
 
 #define IQ_BIN		2300		/* Count ticks per I/Q pair: 120 kS/s */
@@ -712,6 +738,7 @@ static void commit_upto(int hz)
 #define AUDIO_BLOCK	256		/* frames */
 
 static int marker_hz = 101000000, marker_set, radio_want, radio_on, rescan, volume = 4;
+static int radio_bw = 8, radio_off_mhz = 2;
 static int radio_pending;
 static double radio_change_t, pilot_db, rx_db;
 
@@ -1052,16 +1079,19 @@ static void radio_stop(void)
 	while (!smp_idle)
 		usleep(500);
 	radio_on = 0;
+	bw_reg = 0x3f;		/* the sweep calculates with the 8 MHz filter */
 }
 
 static void radio_start(void)
 {
-	/* tuning 1.6-2.6 MHz above the station: IF stays under the fold of the slower sampling */
-	int mhz = (marker_hz + 2000000 + 999999) / 1000000;
+	/* nearest whole MHz about 2 MHz above the station: IF 2.1-3.1 MHz, clear of the edge of
+	 * the 6 MHz filter (10 dB lost at IF 1.6 MHz; the 8 MHz filter does not care) */
+	int mhz = (marker_hz + radio_off_mhz * 1000000 + 500000) / 1000000;
 	double ifhz = (double)marker_hz - mhz * 1e6 + FIF_HZ;
 
 	if (mhz > RF_MAX_MHZ)
 		mhz = RF_MAX_MHZ;
+	bw_reg = radio_bw == 6 ? 0x15 : radio_bw == 7 ? 0x2a : 0x3f;
 	tune(mhz * 1000000);
 	nco_inc = (uint32_t)(ifhz / COUNT_HZ * 4294967296.0);
 	iq_r = iq_w;
@@ -1071,7 +1101,7 @@ static void radio_start(void)
 	audio_on = 1;
 	radio_on = 1;
 	if (verbose)
-		printf("radio %.3f MHz, tune %d MHz, IF %.3f MHz\n", marker_hz / 1e6, mhz, ifhz / 1e6);
+		printf("radio %.3f MHz, tune %d MHz, IF %.3f MHz, filter %d MHz\n", marker_hz / 1e6, mhz, ifhz / 1e6, radio_bw);
 }
 
 /*
@@ -1128,6 +1158,7 @@ static void radio_exit(void)
 	dem_quit = 1;
 	pthread_join(dem_thread, NULL);
 	maudio_close();
+	adc_gain_set(-1);
 	rt_limit(rt_old);
 }
 #else
@@ -1488,10 +1519,10 @@ static void render(void)
 	if (paused)
 		off += snprintf(line + off, sizeof(line) - off, "  PAUSED");
 	text(back, 8, 4, RGB(255, 255, 255), "%s", line);
-	text(back, 8, 24, RGB(170, 220, 170), "DBFS  FLOOR %d", fl);
+	text(back, 8, 24, RGB(170, 220, 170), "DBFS  FLOOR %d  ADC %X", fl, adc_gain & 15);
 	if (radio_on)
-		text(back, 400, 24, RGB(255, 120, 120), "RADIO %.1f MHZ  PILOT %+.0f DB  RX %.0f DB  VOL %d",
-		     marker_hz / 1e6, pilot_db, rx_db, volume);
+		text(back, 400, 24, RGB(255, 120, 120), "RADIO %.1f MHZ  PILOT %+.0f DB  RX %.0f DB  VOL %d  FILTER %d",
+		     marker_hz / 1e6, pilot_db, rx_db, volume, radio_bw);
 	else if (marker_set)
 		text(back, 400, 24, RGB(200, 200, 80), "MARKER %.1f MHZ  ENTER OR CLICK: LISTEN", marker_hz / 1e6);
 	if (ptr_seen && ptr_x >= PLOT_X && ptr_x < PLOT_X + COLS)
@@ -1692,6 +1723,19 @@ static void apply_key(int k)
 	case 'r':
 		rescan = 1;
 		break;
+	case '[':
+		if (adc_gain < 15)
+			adc_gain_set(adc_gain + 1);
+		break;
+	case ']':
+		if (adc_gain > 0)
+			adc_gain_set(adc_gain - 1);
+		break;
+	case 'b':
+		radio_bw = radio_bw == 8 ? 7 : radio_bw == 7 ? 6 : 8;
+		radio_pending = 1;
+		radio_change_t = 0;
+		break;
 	case 'o':
 		radio_want = 0;
 		radio_pending = 1;
@@ -1767,7 +1811,8 @@ static void poll_input(void)
 				{ KEY_ENTER, '\r' }, { KEY_KPENTER, '\r' }, { KEY_R, 'r' },
 				{ KEY_1, '1' }, { KEY_2, '2' }, { KEY_3, '3' }, { KEY_4, '4' },
 				{ KEY_H, 'h' }, { KEY_M, 'm' }, { KEY_EQUAL, '+' }, { KEY_MINUS, '-' },
-				{ KEY_P, 'p' }, { KEY_Q, 'q' },
+				{ KEY_P, 'p' }, { KEY_Q, 'q' }, { KEY_B, 'b' },
+				{ KEY_LEFTBRACE, '[' }, { KEY_RIGHTBRACE, ']' },
 			};
 
 			if (e.type == EV_REL) {
@@ -1916,7 +1961,7 @@ int main(int argc, char **argv)
 	int opt, a = 88, b = 108, exit_after = 0, scan = 0, raw = 0;
 	double last_rescan = 0;
 
-	while ((opt = getopt(argc, argv, "n:a:t:s:vx:SRCDMF:")) != -1) {
+	while ((opt = getopt(argc, argv, "n:a:t:s:vx:SRCDMF:B:O:")) != -1) {
 		switch (opt) {
 		case 'n': N = atoi(optarg); break;
 		case 'a': AVG = atoi(optarg); break;
@@ -1928,6 +1973,8 @@ int main(int argc, char **argv)
 		case 'C': no_clkout = 1; break;
 		case 'D': dump = 1; break;
 		case 'M': mode_mean = 1; break;
+		case 'B': radio_bw = atoi(optarg); break;
+		case 'O': radio_off_mhz = atoi(optarg); break;
 		case 'F': marker_hz = atoi(optarg) * 1000; marker_set = 1; radio_want = 1; radio_pending = 1; break;
 		case 'x': exit_after = atoi(optarg); break;
 		default:
@@ -1975,6 +2022,11 @@ int main(int argc, char **argv)
 	fb_init();
 	keys_init();
 	radio_init();
+	adc_gain = 5;
+#ifndef HOST
+	adc_gain = *(volatile uint16_t *)(dmd + ADC_GAIN) & 15;
+	adc_gain_set(adc_gain);
+#endif
 	view(a, b);
 	ui_ready = 1;
 	fflush(stdout);

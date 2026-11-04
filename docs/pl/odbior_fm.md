@@ -12,7 +12,7 @@ python3 tools/serial/upload.py specan /tmp/specan
 chmod +x /tmp/specan; /tmp/specan 88 108            # albo -F 101000: od razu radio
 ```
 
-Sterowanie: mysz USB (klik lewym = słuchaj, kółko = marker ±100 kHz, prawy = wyłącz radio), strzałki lewo/prawo = marker ±100 kHz, Enter = radio wł./wył., `r` = nowe przemiatanie, `+`/`-` = głośność podczas słuchania; panel: CH+/CH− marker, POWER radio. Mysz i klawiaturę USB można wpiąć w trakcie pracy. ✅ serial; ✅ mysz przez hub USB (krzyżyk, klik, dźwięk, użytkownik 2026-11-04); ❓ klawiatura USB i panel nie sprawdzone. Podczas słuchania przemiatanie stoi; ekran pokazuje `PILOT` (19 kHz względem 17 kHz, okno 0,5 s, skacze przy słabych stacjach) i `RX`.
+Sterowanie: mysz USB (klik lewym = słuchaj, kółko = marker ±100 kHz, prawy = wyłącz radio), strzałki lewo/prawo = marker ±100 kHz, Enter = radio wł./wył., `r` = nowe przemiatanie, `+`/`-` = głośność podczas słuchania, `[`/`]` = wzmocnienie ADC, `b` = filtr tunera (bez zysku, patrz [wzmocnienia_toru.md](wzmocnienia_toru.md)); panel: CH+/CH− marker, POWER radio. Mysz i klawiaturę USB można wpiąć w trakcie pracy. ✅ serial; ✅ mysz przez hub USB (krzyżyk, klik, dźwięk, użytkownik 2026-11-04); ❓ klawiatura USB i panel nie sprawdzone. Podczas słuchania przemiatanie stoi; ekran pokazuje `PILOT` (19 kHz względem 17 kHz, okno 0,5 s, skacze przy słabych stacjach) i `RX`.
 
 **USB po przełożeniu urządzenia (2026-11-04):** po wyjęciu pendrive'a każde następne urządzenie kończyło się `error -145` (`ETIMEDOUT`), mimo poprawnie wykrytej prędkości, także pendrive high-speed. Pomaga przeładowanie sterownika: `tools/board/usbfix.sh` ✅ (kombinacja mysz + klawiatura `09DA:7036`, full-speed, wstaje jako `event1`–`event4`). Bit UTMI „HS rx robust” (reg `0x09` bit 7, fiz. `0x1F205411`), który MBoot przełącza zależnie od prędkości, nie ma tu znaczenia: enumeracja przechodzi przy obu ustawieniach ✅. Przy awarii działał `specan`. Później, po tym przeładowaniu i również przy działającym `specan`, wpięcie huba i kilkukrotne przełożenie myszy działało bez `usbfix.sh` ✅ (według użytkownika; `dmesg` nieoglądany). Awaria nie jest więc skutkiem samego działania `specan` ani każdego przełożenia. Dokładny warunek (może wyjęcie urządzenia zainicjowanego przez MBoot) nieznany ❓.
 
@@ -27,7 +27,7 @@ Znalezione przy uruchamianiu:
 
 - **Trzaski dokładnie co 1 s** (także w `fmrx`) to przerwa ok. 50 ms: domyślny limit jądra `sched_rt_runtime_us` (950 ms na 1000 ms) zatrzymuje wątek RT zużywający 100 % CPU ✅. `specan` ustawia na czas pracy −1 i przywraca przy wyjściu. Żeby wątki jądra na VPE1 mogły ruszyć, próbnik co 0,25 s na chwilę przechodzi na `SCHED_OTHER` i robi `sched_yield` (`nanosleep` przy 250 Hz kosztował pełne 4 ms). Najdłuższa przerwa teraz ok. 1 ms; 28 s nagrania z HDMI bez wykrytych trzasków ✅.
 - W przerwie (przerwanie zegara co 4 ms, ok. 130 µs) filtry dostają swoją wygładzoną wartość zamiast chwilowej wartości dyskryminatora. To wyraźnie poprawiło kontrast dźwięku.
-- Przy strojeniu stacji 1,6–2,6 MHz poniżej tunera IF zostaje pod złożeniem widma także przy wolniejszym próbkowaniu.
+- Radio stroi tuner do najbliższego pełnego MHz ok. 2 MHz nad stacją (IF 2,1–3,1 MHz).
 
 Pliki: `binaries/fm/radio_hdmi_101.wav` (HDMI przez grabber), `binaries/fm/f101_8s.wav` (demodulacja na PC).
 
