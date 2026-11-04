@@ -10,8 +10,8 @@ written from the MBoot prompt with a FAT32 pendrive, see
 yourself (kernel, rootfs, fbDOOM): [build_manual.md](build_manual.md).
 
 **Live spectrum analyzer and FM radio on HDMI:** click a station with a USB mouse
-(or pick it with the arrow keys) and listen. Source: `tools/board/specan.c`, how to
-run it: [docs/fm_radio.md](docs/fm_radio.md).
+(or pick it with the arrow keys) and listen. Ready to run: `bin/specan`, source:
+`tools/board/specan.c`, how to run it: [docs/fm_radio.md](docs/fm_radio.md).
 
 ![specan on HDMI: spectrum of the FM band, listening to 101.0 MHz, waterfall below](docs/img/specan_radio.png)
 
@@ -50,6 +50,7 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `docs/audio.md` | sound from Linux: how the two audio DSPs are started and fed (WAV player, fbDOOM sound effects) |
 | `docs/own_dsp_audio.md` | sound on HDMI from **our own SE DSP program**, without MStar code: sample format, interrupt, `own_audio.h`, 4-register init |
 | `examples/bwtest.c`, `examples/randhog.c` | checkerboard + memory load tests that reproduce/verify the glitches |
+| `bin/specan` | live FFT spectrum analyzer and **FM radio on HDMI** (static, musl, our own DSP program, no MStar code); needs `tuner_init` in MBoot, see `docs/fm_radio.md` |
 | `bin/fbdoom` | fbDOOM with double buffering, fast drawing and serial-console controls (source: https://github.com/mztulip/fbDOOM) |
 | `bin/fbdoom_sound` | the same fbDOOM **with sound effects** through our own DSP program (`OWN_SOUND=1`, no MStar code; HDMI); no music, source: fbDOOM branch `sound_only` |
 | `bin/fbdoom_music` | fbDOOM with sound effects **and music** (OPL2 emulation, `opl2.c`), static (musl), runs on both rootfs; the one in the flash system |

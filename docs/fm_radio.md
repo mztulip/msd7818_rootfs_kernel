@@ -18,10 +18,14 @@ the waterfall while the comb stays constant.
 
 ## Running it
 
+A ready binary is in `bin/specan`, or build it with the musl toolchain from the Buildroot
+of the flash rootfs ([build_manual.md](../build_manual.md)). It runs from `/tmp` or a pendrive.
+
 ```sh
-# on the PC: musl toolchain from the Buildroot of the flash rootfs, see build_manual.md
-mipsel-buildroot-linux-musl-gcc -O2 -static -pthread -o specan tools/board/specan.c -lm
-python3 tools/serial/upload.py specan /tmp/specan
+# on the PC, only to build it yourself:
+mipsel-buildroot-linux-musl-gcc -O2 -static -pthread -o bin/specan tools/board/specan.c -lm
+# copy over the serial console, or put it on the pendrive's FAT partition (/mnt/usb)
+python3 tools/serial/upload.py bin/specan /tmp/specan
 
 # at the MBoot prompt: the ADC and the demod 8051 must run before Linux starts
 tuner_init
