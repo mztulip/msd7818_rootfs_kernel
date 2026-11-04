@@ -27,6 +27,9 @@ Każda informacja ma oznaczenie pewności:
 | [i2c.md](i2c.md) | Sprzętowe I2C (MIIC): porty, rejestry, pinmux, tuner MxL5007T |
 | [przyciski_sar.md](przyciski_sar.md) | Panel przedni: przyciski POWER/CH+/CH− i wyświetlacz 7-seg. na układzie FD650 (GPIO na pinach SAR); SAR ADC |
 | [gpio.md](gpio.md) | GPIO: tablica pinów z BSP, znane piny (wyciszenie audio GPIO44, SCART RGB GPIO47) |
+| [odbior_fm.md](odbior_fm.md) | Radio FM na żywo na HDMI w `specan` (wybór stacji myszą lub strzałkami), nagrania `fmrx` + `tools/fm_demod.py`, pilot 19 kHz jako dowód |
+| [falszywe_sygnaly.md](falszywe_sygnaly.md) | Skąd w widmie prążki, które nie są radiem: grzebień 6 MHz (kwarc tunera), HDMI, przeciek LO, odbicia; dowody z dwóch kwarców i wyłączania HDMI |
+| [analizator_widma.md](analizator_widma.md) | Analizator widma na ekranie z FFT (`specan`): uruchomienie, usuwanie odbić przez minimum po strojeniach, opcje diagnostyczne |
 | [demodulator_if.md](demodulator_if.md) | Tor IF → ADC → demodulator DVB-T (8051 + DSP), skrzynka pocztowa z Linuksa, rejestr sygnału `0x2098`, widmo RF przemiatane (`rfscan`) |
 | [ir_pilot.md](ir_pilot.md) | Pilot IR: dekoder w PM, firmware PM51, rejestry, drogi pod Linuksem |
 | [audio.md](audio.md) | Blok audio (Vivaldi/MAD, 2× DSP): jak Linux gra dźwięk przez DSP, cichy SCART (wyciszenie na GPIO44) |

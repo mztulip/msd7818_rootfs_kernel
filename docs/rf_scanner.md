@@ -6,6 +6,8 @@ the signal power at every step and draws a bar graph on the HDMI/SCART
 screen. It also prints a table to the console. It shows **where there is a
 signal**; it does not demodulate anything.
 
+A later tool, [fm_radio.md](fm_radio.md), samples the ADC directly: FFT spectrum, FM radio.
+
 ## How it measures
 
 - The tuner is set up and tuned over I2C (`/dev/i2c-0`, the

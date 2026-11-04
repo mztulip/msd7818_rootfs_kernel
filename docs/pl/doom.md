@@ -82,6 +82,16 @@ Klawiatura USB steruje grą, a konsola szeregowa jest wolna do podglądu, np. `t
 
 Uwaga: wyjście programu (`printf`) idzie wtedy na `tty2`, a nie na serial. Żeby je zobaczyć, przekieruj do pliku: `... > /tmp/doom.log 2>&1`. Plik zapełni się dopiero po wyjściu, bo stdout jest buforowany.
 
+## Autostart w systemie z flasha (od 2026-11-04)
+
+Wpis konsoli w `/etc/inittab` to `/usr/bin/bootdoom`: raz po starcie przełącza ekran na `tty2` i uruchamia `doom -vtalso /dev/tty2`, a potem robi `chvt 1` i uruchamia zwykłe `getty` na konsoli szeregowej. Znacznik `/run/doom_started` pilnuje, żeby gra nie wstała ponownie aż do restartu.
+
+- `-vtalso DEV`: klawisze jednocześnie ze stdin (konsola szeregowa) i z klawiatury konsoli `DEV` (klawiatura USB). Ta konsola musi być na wierzchu.
+- Wyjście: `Ctrl-C` na porcie szeregowym, Backspace albo Quit Game na klawiaturze. Potem powłoka na ekranie (`tty1`) i na porcie szeregowym.
+- Gdy gra się wysypie, skrypt idzie dalej tak samo. Surowy tryb klawiatury zostaje tylko na `tty2`.
+
+Sprawdzone: zapis do flasha, start bez pendrive'a w roli źródła gry, grabber: obraz, muzyka, `Ctrl-C`, `#` na ekranie. Klawiatura USB i Backspace sprawdzone z `-vtalso` uruchomionym z powłoki.
+
 ## Wydajność (zmierzone, `-fps`, demo z ekranu tytułowego)
 
 | Wersja | kl./s |

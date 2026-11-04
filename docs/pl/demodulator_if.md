@@ -321,6 +321,8 @@ Słowo 1 ADC (`0x112802`/`03` = `0x0440`) ma układ z MSB1233C: IMUX [6:4] = 4 i
 
 #### ✅ Próbkowanie ADC z MIPS i widmo pośredniej (2026-11-03/04)
 
+> **Korekta 2026-11-04:** prążek opisany niżej jako „stacja FM 96,03 MHz” to wielokrotność 6 MHz z grzebienia związanego z kwarcem tunera, a nie radio. Prążek „4,495 MHz” to przeciek LO tunera, a rzeczywista IF to ok. 4,5953 MHz. Patrz [falszywe_sygnaly.md](falszywe_sygnaly.md). Widmo na żywo też jest już zrobione: `tools/board/specan.c`, [analizator_widma.md](analizator_widma.md).
+
 `tools/board/dmdts.c` (`dmdts N plik`): przy każdej próbce zapisuje licznik CP0 Count (`rdhwr $2`, 276 MHz = 3,6 ns) i słowo `0x112098`. Format: nagłówek 8 B (u32 częstotliwość licznika, u32 N), potem rekordy 8 B (u32 Count, u16 słowo, u16 wypełnienie). Bufor jest wcześniej wypełniony i zablokowany (`mlockall`). Bez tego co 512 rekordów (strona 4 KB) wypadała dziura ok. 20 µs na błąd strony.
 
 **Regularność (65 536 próbek, 7,3 ms):** odstęp 30 albo 31 taktów licznika, czyli **ok. 110 ns, fs ≈ 9,09 MS/s, rozrzut ±1 takt (≈ 2 ns)**. W całym pliku jest jedna dłuższa przerwa (ok. 130 µs, pewnie przerwanie zegara) i kilkanaście przerw 0,3–1 µs. Odcinki bez przerw mają dziesiątki tysięcy próbek. Rozrzut 2 ns wystarcza dla pośredniej do ok. 9 MHz.

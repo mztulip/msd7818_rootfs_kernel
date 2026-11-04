@@ -38,6 +38,7 @@ mipsel-linux-gnu-gcc (GCC) 12.2.0
 | `docs/display_flicker_miu.md` | why the picture glitched under memory load (fbDOOM) and the MIU priority fix |
 | `tools/` | our sources: programs built on the board (`tools/board/`: framebuffer tests, audio library and `wavplay`, demod mailbox, RF scan…), bare-metal MBoot helpers and stock firmware probes (`tools/baremetal/`), serial console scripts, Ghidra scripts. See [Tools](#tools) |
 | `docs/pl/` | the full Polish working notes of the project (registers, I2C, tuner, demodulator, GOP, audio, stock firmware probes, …); index: [docs/pl/README.md](docs/pl/README.md) |
+| `docs/fm_radio.md` | **specan**: live FFT spectrum and waterfall plus **live FM radio on HDMI**, station picked with a USB mouse or arrow keys; what the self-made spectrum lines are |
 | `docs/rf_scanner.md` | **rfscan**: RF spectrum analyzer (44–880 MHz) using the box's tuner and demodulator, drawn on the TV; example scans in `docs/rfscan_data/` |
 | `docs/getting_started.md` | step-by-step guide: backup, pendrive, boot, I2C and front panel, apps, fbDOOM, sound |
 | `docs/audio.md` | sound from Linux: how the two audio DSPs are started and fed (WAV player, fbDOOM sound effects) |

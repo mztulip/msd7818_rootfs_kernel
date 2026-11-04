@@ -81,7 +81,7 @@ Osobna konfiguracja Buildroota, budowana do `rootfs_mini/output` (główny Build
 
 **Zawartość:**
 - BusyBox, statycznie z musl (1,2 MB przed kompresją);
-- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem przez **nasz własny program DSP** (`OWN_SOUND=1`, `own_audio.h`, bez kodu MStara; 494 KB; od 2026-10-20, wcześniej 581 KB z kodem DSP MStara), dźwięk tylko na HDMI. **we flashu od 2026-11-04** (`flash_images/rootfs_20261104.img`, fbDOOM `master` e66cb6c): także **muzyka** (OPL2, własny `opl2.c`) i wyłączanie dźwięku przy wyjściu Ctrl+C, 562 KB, ✅ po zapisie sprawdzony przez grabber HDMI (`docs/grabber_hdmi.md`);
+- `/home/fbdoom`: fbDOOM statycznie z musl, z dźwiękiem przez **nasz własny program DSP** (`OWN_SOUND=1`, `own_audio.h`, bez kodu MStara; 494 KB; od 2026-10-20, wcześniej 581 KB z kodem DSP MStara), dźwięk tylko na HDMI. **we flashu od 2026-11-04** (`flash_images/rootfs_20261104b.img`, fbDOOM `master` ecd1e69): także **muzyka** (OPL2, własny `opl2.c`), wyłączanie dźwięku przy wyjściu Ctrl+C i **autostart** (niżej), 562 KB, ✅ po zapisie sprawdzony przez grabber HDMI (`docs/grabber_hdmi.md`);
 - `/home/freedoom_e1m1.wad`: okrojony Freedoom (jedna mapa E1M1, BSD-3, `tools/doom/mkminiwad.py`) z `FREEDOOM_COPYING.txt` i plikami `FREEDOOM_CREDITS*.txt` obok (wymóg licencji); do 2026-10-20 był tu `doom1.wad`; polecenie `doom` uruchamia grę;
 - **root bez hasła, logowany automatycznie** na konsoli szeregowej i na ekranie (`tty1`), od 2026-10-20 (niżej: „Logowanie”);
 - `/tmp` i `/run` w RAM (tmpfs), reszta tylko do odczytu;
