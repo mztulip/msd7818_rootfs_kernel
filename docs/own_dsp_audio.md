@@ -113,9 +113,12 @@ the [fbDOOM fork](https://github.com/mztulip/fbDOOM) builds the sound effects
 on `own_audio.h`; the result is `bin/fbdoom_sound`. Recorded attract demo:
 the loudness follows the same course as the build with MStar's code, a bit
 louder; with `-nosound` the recording is flat. Run it as `bin/fbdoom`
-(see [getting_started.md](getting_started.md)); fbDOOM puts the serial
-console into raw mode, so after it type `^C` and `stty sane`
-(`tools/board/doomrun.sh` does that).
+(see [getting_started.md](getting_started.md)). `^C` on the serial console
+quits and restores the terminal.
+
+`bin/fbdoom_music` and the flash system also stop the sound on `^C`.
+`bin/fbdoom_sound` is an older build: after `^C` the DSP keeps looping the
+last audio on HDMI until the next audio program runs.
 
 ## To do
 

@@ -118,7 +118,7 @@ Funkcje `0x0456`, `0x046F`, `0x049C`, `0x04AE` to procedury biblioteki Keil (`?C
 | `0x1B00`–`0x1B10` | sterowanie przerwaniami MCU (`0x1B10` bit 2 = przerwanie od hosta, `0x1B08` = kasowanie) | 🔍 |
 | `0x2000`–`0x25FF` | **rejestry sprzętowe demodulatora** (najwięcej odwołań: strony `0x21`–`0x25`) | 🔍 zakres; ❓ mapowanie na RIU |
 | `0x2F00`–`0x2F1F` | **skrzynki pocztowe** z MIPS (RIU `0x1126xx`) | 🔍 potwierdzone z obu stron |
-| `0x8000`–`0x83FF` | RAM firmware'u: zmienne, a pod `0x8300 + n` „rejestry DSP” (parametry z `INTERN_DVBT_DSPREG`) | 🔍 |
+| `0x8000`–`0x83FF` | RAM firmware'u: zmienne, a pod `0x8380 + n` (n < `0x80`) „rejestry DSP” (parametry z `INTERN_DVBT_DSPREG`) | 🔍 |
 
 Mapowanie stron `0x20`–`0x25` na RIU nie jest jeszcze ustalone. Strona `0x2F` odpowiada bankowi RIU `0x1126` (patrz niżej), więc nie jest to po prostu „młodsze 16 bitów adresu”.
 
@@ -140,8 +140,8 @@ Polecenia:
 |---|---|---|
 | `1` | `data = XDATA[adres]` | `…_DVB_ReadByte` |
 | `2` | `XDATA[adres] = data` | `…_DVB_WriteByte` |
-| `3` | `data = XDATA[0x8300 + adres]` („rejestr DSP”) | `…_DVB_ReadDspReg` |
-| `4` | `XDATA[0x8300 + adres] = data` | `…_DVB_WriteDspReg` |
+| `3` | `data = XDATA[0x8380 + adres]` („rejestr DSP”, tylko adres < `0x80`; poprawione 2026-11-03 z deasemblacji `0x5DEE`/`0x5DFB`) | `…_DVB_ReadDspReg` |
+| `4` | `XDATA[0x8380 + adres] = data` | `…_DVB_WriteDspReg` |
 | `0xA5` | pętla nieskończona (zatrzymanie MCU, np. przed przeładowaniem firmware'u) | |
 
 Najważniejszy wniosek: **przez polecenia 1/2 MIPS może czytać i pisać dowolny adres XDATA 8051**, w tym wszystkie rejestry sprzętowe demodulatora widoczne dla 8051. To gotowe narzędzie do badania demodulatora bez pisania własnego firmware'u, także do szukania trybu „ADC dump”.
@@ -156,6 +156,14 @@ mw.b bf206905 0
 md.b bf224c00 1      # oczekiwane FF
 md.b bf224c05 1      # wartość
 ```
+
+### Jak MIPS sięga do XDATA 8051 (podsumowanie)
+
+- XDATA 8051 (w tym rejestry demodulatora `0x2000`–`0x25FF`, np. `0x2098`) **nie jest zmapowana w przestrzeń adresową MIPS**. Dostęp jest pośredni: MIPS wpisuje polecenie do wspólnego banku RIU `0x1126`, wywołuje INT0, a odczyt lub zapis wykonuje handler 8051 (`0x55E9`) i odsyła wynik przez ten sam bank.
+- Wspólny jest tylko bank `0x1126`: 8051 widzi go jako XDATA `0x2F00`–`0x2F1F`, a MIPS jako `0xBF224C00…` (rejestr 16-bitowy co 4 bajty, młodszy bajt `+0`, starszy `+1`, patrz `riu.md`).
+- **Nie ładujemy własnego kodu do 8051.** Obsługa skrzynki jest częścią firmware'u MStara (`INTERN_DVBT_table`), który ładuje do 8051 komenda MBoota `tuner_init`, bo stockowy driver MStara używa poleceń 1/2 do konfiguracji demodulatora. My tylko korzystamy z tego „tylnego wejścia”. Bez `tuner_init` 8051 nie ma firmware'u i skrzynka nie odpowiada (`dmdmbx`: „no handshake from 8051”).
+- Koszt to jedno przerwanie i obsługa w 8051 na każdy bajt (ok. 4,4 µs), stąd brak równego strumienia próbek.
+- **Rozstrzygnięte 2026-11-03:** strona `0x20` jest też bankiem RIU `0x1120`, który MIPS może czytać bezpośrednio po przełączeniu `0x101E39` = 0 (patrz „Bezpośredni dostęp MIPS do rejestrów demodulatora”).
 
 ### Druga skrzynka: pakiety poleceń
 
@@ -228,7 +236,147 @@ echo 1 > /sys/class/vtconsole/vtcon1/bind      # przywrócenie konsoli
 6. **Statystyka** (2000 odczytów pobranych na PC): 8 bit, 158 różnych wartości, średnia 129 (≈ `0x80`), odchylenie ok. 29, autokorelacja z przesunięciem 1 ≈ 0,01 (próbki niezależne). Bajty `0x2096`/`0x2097` nie korelują z `0x2098`; każdy bajt jest czytany w innej chwili, więc to nic nie przesądza.
 7. **Weryfikacja jako miernik mocy:** wariancja uśpiony = 0,3; nastrojony = 720–890 (474 MHz), 565 (200 MHz), 295 (100 MHz), powtarzalnie ±5%. Z anteną widać multipleksy DVB-T jako garby szerokości kanału.
 
-Nie wiadomo jeszcze, czym dokładnie jest `0x2098` (wyjście ADC, miksera albo błąd AGC) ❓. Odpowiedź da firmware 8051: które funkcje czytają lub zapisują ten adres.
+`0x2098` to surowe wyjście ADC I (✅ test 2026-11-03, sekcja niżej).
+
+#### Kto używa `0x2096`–`0x2098` (🔍, sprawdzone 2026-11-03)
+
+**Nikt w oprogramowaniu MStara.** To rejestr sprzętowy, którego ani firmware, ani aplikacja nie czyta:
+- **Firmware 8051** (`intern_dvbt_fw.bin`, `intern_dvbc_fw.bin`): brak `MOV DPTR,#0x2096…0x2098`, brak argumentów 16-bit `R6=0x20 R7=0x98`, brak `MOV P2`/`MOV DPH` (adresowania stronami). Z całej strony `0x20` firmware używa tylko `0x2002`, `0x20C0`–`0x20CB`, `0x20D6`–`0x20D7`, czyli swoich zmiennych stanu (czyta je MIPS w `GetLock`, `Version`, `Show_BER_Info`…).
+- **Driver MIPS** (`libdrvDEMOD.a`: `halDMD_INTERN_DVBT.o`, `drvDMD_INTERN_DVBT.o`, `halDMD_INTERN_common.o`): wszystkie ok. 380 wywołań `MDrv_SYS_DMD_VD_MBX_ReadReg/WriteReg` mają stałe adresy i żaden nie trafia w `0x2096`–`0x2098`. Wyjątki z adresem z rejestru to tylko `MDrv_DMD_DVBT_GetReg` (ogólne API), `Get_TPS_Info` (tablica) i `Get_FreqOffset`.
+- **Stock app** (`kernel.lzma` po rozpakowaniu) i **MBoot** (`RAM87_DU.RAM`): brak instrukcji `addiu/ori` ze stałą `0x2096`–`0x2098` jako adresem XDATA. Kontrola metody: `li a0,0x2113`/`0x2122`/`0x20C0` znajdują się w obu binarkach. Jedyne trafienie w MBoocie (`0x8762E584`) to wskaźnik `lui 0x8769 + 0x2098`.
+
+**Czym oryginał mierzy siłę sygnału:** `HAL_DMD_GetRFLevel` (`halDMD_INTERN_common.o`, wołane przez `GetSignalStrength`) czyta `0x2113` (próg 200), zapisuje selektor `0x2122` = `3`, czyta `0x2125`/`0x2124` (odczyt AGC) oraz `0x2105`, `0x212C`/`0x212D`. To kanał AGC demodulatora, a nie `0x2098`. Działa tylko wtedy, gdy demodulator prowadzi pętlę AGC (po `SetActive`/strojeniu kanału).
+
+#### Czy jest drugi kanał (I/Q)? (stan 2026-11-03)
+
+**Odpowiedź z testu na płycie (niżej):** sprzęt ma ADC I i ADC Q, ale sygnał z tunera idzie tylko przez ADC I; `0x2098` to surowe wyjście ADC I. Poniżej rozważania sprzed testu.
+
+Znaleziony jest tylko jeden wyraźny rejestr sygnału (`0x2098`). Skan `changes` nie mógł jednak wykazać drugiego:
+- MxL5007T daje rzeczywistą pośrednią jednym wyjściem, więc na etapie ADC jest jeden kanał. I/Q powstają dopiero w cyfrowym mikserze demodulatora.
+- Skan robiono przy nieaktywnym demodulatorze (bez `SetActive`/strojenia kanału). Rejestry za mikserem mogły stać.
+- Skan obejmował tylko XDATA `0x2000`–`0x2FFF`.
+- `0x2097[7:4]` i `0x2096[0]` mogą być młodszymi bitami tej samej próbki (ADC 10–12 bit) albo innym kanałem. Brak korelacji z `0x2098` niczego nie przesądza (osobne odczyty). Surowych odczytów tych bajtów nie zapisano. `0x2034` też się zmienia, niezbadany.
+
+Testy do zrobienia:
+1. Rozkład `0x2097`/`0x2096` przy tunerze uśpionym i aktywnym. Młodsze bity próbki to równomierny szum w obu stanach, a kanał Q zmieniłby rozrzut razem z sygnałem.
+2. Skan `changes` przy demodulatorze uruchomionym na 474 MHz (multipleks). Nowy bajt szumiący wokół `0x80` będzie kandydatem na I/Q za mikserem. Wymaga ustalenia sekwencji startu demodulatora przez skrzynkę (`halDMD_INTERN_DVBT.o`).
+
+Wniosek (potwierdzony testem niżej): `0x2098` to surowe wyjście ADC I, widoczne w XDATA, bo blok rejestrów demodulatora (bank RIU `0x1120`) jest tam zmapowany w całości.
+
+#### ADC, mikser i parametry DSP: analiza biblioteki i firmware'u (🔍, 2026-11-03)
+
+**Rejestry DSP** (polecenia 3/4 skrzynki, XDATA `0x8380 + n`) mają indeksy z enuma `DVBT_Param` w `MstarCore/bsp/k1/include/drvDMD_INTERN_DVBT.h` (stara tabela, nie `DVBT_N_Param`). Potwierdza to `INTERN_DVBT_Config`, który pisze `0x03` BW, `0x06` LP_SEL, `0x27`/`0x28` FC (częstotliwość IF), `0x29`/`0x2A` FS (próbkowanie), `0x33` IQ_SWAP, `0x3D` CCI, `0x71` TS_SERIAL. Ważne dla ADC:
+
+| n | Nazwa | XDATA | Źródło w sprzęcie (procedura raportu w 8051 pod `0x39F0`–`0x3A84`) |
+|---|---|---|---|
+| `0x0F` | CFG_ZIF | `0x838F` | |
+| `0x17` | AGC_REF | `0x8397` | ← `0x2113` (ten sam bajt czyta `HAL_DMD_GetRFLevel`) |
+| `0x1B` | PWDN_ADCI | `0x839B` | ← XDATA `0x2E03` bit 4 |
+| `0x1C` | PWDN_ADCQ | `0x839C` | (nieodwzorowany w firmware) |
+| `0x1D` | MPLL_ADC_DIV_SEL | `0x839D` | ← XDATA `0x2E61` |
+| `0x1E` | OP_DCR_EN (usuwanie DC) | `0x839E` | |
+| `0x2B` | MIXER_IQ_SWAP_MODE | `0x83AB` | ← XDATA `0x215E` bit 0 |
+| `0x30` | MIXER_IQ_DBG_SEL | `0x83B0` | ← XDATA `0x215E` bit 4 |
+
+FC i FS firmware kopiuje do swoich zmiennych (`0x8239`, `0x824D`) i stosuje dopiero przy starcie maszyny stanów, więc zmiana samych parametrów DSP bez restartu demodulatora nic nie da.
+
+**Sprzęt ma dwa ADC (I i Q):** osobne `PWDN_ADCI`/`PWDN_ADCQ` i `ADC_PGA_GAIN_I/Q`. Przy tunerze low-IF (MxL5007T) używany jest pewnie jeden.
+
+**Blok ADC = RIU `0x1128`** ✅ (fiz. `0x1F225000`, czytelny z MIPS; zawartość po `tuner_init` dokładnie jak zapisy `InitClkgen`). To ten sam IP „ADCPLL” co w `MSB1233C.c` (ok. linii 1680–1810, komentarze bitów). Strona XDATA `0x2E` **nie** jest tym bankiem (czyta same zera); co oznacza `0x2E03`/`0x2E61` w firmware, nie wiadomo ❓.
+
+`INTERN_DVBT_InitClkgen` (kolejność zapisów RIU): `0x101E39`=0, `0x112002`=`0x52`, `0x112003`=0, `0x112060`/`61`/`64`=0, `0x112065`=`0x0C`, `0x112066`=0, `0x112067`=`0x0C`, `0x11286A`/`6B`=`0x04`/`0x06`, `0x112868`/`69`=0, `0x112866`/`67`=`0x00`/`0x24`, `0x112860`/`61`=`0x01`/`0x4C`, `0x112802`/`03`=`0x40`/`0x04`, `0x112816`/`17`=`0x05`/`0x05`, `0x112818`=`0x03`→0, `0x112819`=0, `0x112879`=`0x10`, `0x112840`/`41`=0, `0x11286C`=0, `0x10331E`=`0x10`, `0x103480`=0, `0x103314`=0, `0x111F22`=1, `0x111F02`–`0x111F19`=0 (zegary demodulatora włączone), `0x103300`/`01`=`0x11`/`0x05`, `0x103308`/`09`=`0x01`/0, `0x111F1C`/`1D`=1/1, `0x10331A`/`1B`=1/1, `0x101E9E`=0, `0x101EA0`/`A1`=0, `0x103C0E`=1.
+
+`HAL_DMD_ADC_IQ_Switch(tryb)`: `0x112876` = `0`/`1`/`2` (wybór wejścia ADC), `0x1128A1` = 0 lub 1. Tryb wybiera, który pad/kanał (I czy Q) dostaje sygnał.
+
+`INTERN_DVBT_Power_On_Initialization`: `InitClkgen`, `ADC_IQ_Switch`, ładowanie firmware'u (`0x103480`–`0x10348C`), `0x101E3E`=2, `Reset`, potem przez skrzynkę `0x2200`=`0xFF`, odczyt-zapis `0x2204`, `DSPReg_Init`. `INTERN_DVBT_Active` to tylko `Cmd_Packet_Send(…, 1)`.
+
+#### ✅ `0x2098` to surowe wyjście ADC I (test na płycie 2026-11-03)
+
+Warunki: antena, MBoot `tuner_init`, Linux z USB, tuner na 474 MHz (`rfscan 474 474 4 300 1 30`). Pomiar: `dmdraw 20000` (bezpośredni odczyt, niżej). Każda zmiana cofnięta przed następną; firmware 8051 odpowiadał przez cały czas. Skrypty na płycie: `/root/riub.sh` (zrzut banku RIU przez `devmem`), `/root/adct.sh PHYS VAL OPIS` (zmiana bajtu RIU, pomiar, przywrócenie).
+
+| Zmiana (bank `0x1128`, fiz. adres) | `0x2098` |
+|---|---|
+| bez zmian | wariancja 1400–1440, średnia ≈ `0x80` |
+| `0x112818` bit 0 = 1 (power-down ADC I), `0x1F225030` | **stałe `0x89`**, wariancja 0 |
+| `0x112818` bit 1 = 1 (power-down ADC Q) | bez zmian |
+| `0x112802` bit 0 / bit 1 (w MSB1233C power-down Q/I) | bez zmian (w Kronusie to nie power-down) |
+| `0x112803` bit 4 = 1 (zamiana ADC I↔Q), `0x1F225005` | stałe `0x80` |
+| `0x112802` = `0x00` (IMUX = 0, wejście kalibracyjne), `0x1F225004` | wariancja 0,2 (sam szum kwantyzacji) |
+| `0x112802` = `0x10` (IMUX = 1, wejście VIF) | stałe `0xFF` (nasycenie) |
+| `0x112876` = 1, `0x1F2250EC` (było 2) | stałe `0x93` |
+| `0x112876` = 0 | bez zmian |
+| XDATA `0x215E` = `0x10` / `0x01` (debug sel / zamiana I/Q miksera cyfrowego) | bez zmian |
+
+Wniosek: `0x2098` zależy tylko od ADC I i od jego multipleksera wejścia, a nie od miksera cyfrowego. Stała wartość na wejściu ADC daje stałą wartość `0x2098` (`0xFF`, `0x89`, `0x93`). Za mikserem cyfrowym stała zamieniłaby się w sinusoidę o częstotliwości IF, a za usuwaniem DC wróciłaby do `0x80`. To jest więc **surowa próbka ADC I** (pewnie 8 starszych bitów), przed mikserem i usuwaniem DC. Kanał Q (ADC Q) w tej płycie nie niesie sygnału, bo tuner low-IF podaje sygnał tylko na wejście I.
+
+Słowo 1 ADC (`0x112802`/`03` = `0x0440`) ma układ z MSB1233C: IMUX [6:4] = 4 i QMUX [10:8] = 4 („DVB z padów”), bit 12 = zamiana I/Q. Power-down ADC I/Q to słowo `0x0C` (`0x112818` bity 0/1), jak w drugim komentarzu MSB1233C. MBoot zostawia `ADC_IQ_Switch` w trybie 2 (`0x112876` = 2, `0x1128A1` = 1).
+
+#### Bezpośredni dostęp MIPS do rejestrów demodulatora ✅ (2026-11-03)
+
+- **Strona XDATA `0x20` = bank RIU `0x1120`** (fiz. `0x1F224000`): XDATA `0x2002` = `0x52`, `0x2065`/`0x2067` = `0x0C`, czyli zapisy `InitClkgen` do `0x112002`/`0x112065`/`0x112067`. `0x2098` = fiz. `0x1F224130` (młodszy bajt słowa `0x112098`), `0x2096`/`0x2097` = `0x1F22412C`.
+- **Przełącznik właściciela szyny: RIU `0x101E39`** (fiz. `0x1F203C71`; `0xBF203C70` = `0x0100` po `tuner_init`). `1` = rejestry demodulatora należą do 8051 (MIPS czyta z banku `0x1120` same zera), `0` = dostęp ma MIPS. `HAL_DMD_ADC_IQ_Switch` zapisuje go, ustawia 0 na czas swoich zapisów i przywraca. Bank ADC `0x1128` i skrzynka `0x1126` są dostępne przy obu ustawieniach.
+- `tools/board/dmdraw.c` (`dmdraw N [plik]`): ustawia `0x101E39` = 0, czyta N razy 16-bitowe słowa `0x112096` i `0x112098`, przywraca `0x101E39`, wypisuje tempo, średnią, wariancję i autokorelację `0x2098`. Plik: 4 bajty na próbkę (`0x2096`, `0x2097`, `0x2098`, `0x2099`).
+- Tempo: **ok. 260 ns na próbkę** (dwa odczyty 16-bit), czyli ok. 3,8 MS/s, 17 razy szybciej niż skrzynka (4,4 µs). Wariancja taka sama jak przez skrzynkę. Autokorelacja z przesunięciem 1 ≈ −0,12 (przez skrzynkę ≈ 0,01): kolejne próbki są już trochę zależne. Odstępy między odczytami nie są jednak równe (przerwania, magistrala), a ADC pracuje dużo szybciej, więc to nadal nie jest strumień próbek do FFT ❓. To trop na później.
+- Na czas odczytu 8051 traci dostęp do rejestrów demodulatora. Przy nieaktywnym demodulatorze nie było problemów; przy pracującym (`SetActive`) trzeba uważać ❓.
+
+#### ✅ Próbkowanie ADC z MIPS i widmo pośredniej (2026-11-03/04)
+
+`tools/board/dmdts.c` (`dmdts N plik`): przy każdej próbce zapisuje licznik CP0 Count (`rdhwr $2`, 276 MHz = 3,6 ns) i słowo `0x112098`. Format: nagłówek 8 B (u32 częstotliwość licznika, u32 N), potem rekordy 8 B (u32 Count, u16 słowo, u16 wypełnienie). Bufor jest wcześniej wypełniony i zablokowany (`mlockall`). Bez tego co 512 rekordów (strona 4 KB) wypadała dziura ok. 20 µs na błąd strony.
+
+**Regularność (65 536 próbek, 7,3 ms):** odstęp 30 albo 31 taktów licznika, czyli **ok. 110 ns, fs ≈ 9,09 MS/s, rozrzut ±1 takt (≈ 2 ns)**. W całym pliku jest jedna dłuższa przerwa (ok. 130 µs, pewnie przerwanie zegara) i kilkanaście przerw 0,3–1 µs. Odcinki bez przerw mają dziesiątki tysięcy próbek. Rozrzut 2 ns wystarcza dla pośredniej do ok. 9 MHz.
+
+**Test z FM** (`rfscan F F 1 300 1 30`, potem `dmdts 65536`, F = 96…100 MHz; pliki `binaries/adc_capture/fm96…fm100.bin`, `ts474.bin`; wykres `widma_fm96-100_474.png`; analiza `tools/adc_spectrum.py`, Welch 4096, odcinki dzielone przy przerwach > 1 µs). Pobieranie z płyty: `tools/serial/uart_get.py ZDALNY LOKALNY` (gzip + base64 + md5).
+
+| Strojenie | Prążek stacji | RF = F − 4,57 + prążek |
+|---|---|---|
+| 97 MHz | 3,592 MHz, +20 dB | 96,02 MHz |
+| 98 MHz | 2,594 MHz, +22 dB | 96,02 MHz |
+| 99 MHz | 1,595 MHz, +22 dB | 96,03 MHz |
+| 100 MHz | 0,60 MHz | 96,03 MHz |
+| 96 MHz | ok. 4,49 MHz (odbicie od fs/2) | |
+
+Prążek przesuwa się dokładnie o 1 MHz na 1 MHz strojenia, więc to prawdziwy sygnał radiowy: **stacja na ok. 96,03 MHz**. Widmo nie jest odwrócone (IF = RF − F + 4,57). Widać też słabsze szersze garby (inne stacje FM) i zbocze filtra pośredniej tunera poniżej ok. 0,8 MHz. Prążek 4,495 MHz jest we wszystkich plikach, także na 474 MHz, więc to zakłócenie sprzętowe. DVB-T na 474 MHz daje płaskie widmo.
+
+Ograniczenia:
+- fs ≈ 9,09 MS/s, a pasmo pośredniej to 0,57–8,57 MHz, więc widmo jest **złożone wokół 4,54 MHz**: każde miejsce na wykresie to dwie częstotliwości RF (IF i fs − IF). Węższy filtr tunera (6 MHz) tylko trochę pomaga.
+- Odczyt idzie przez magistralę RIU i zależy od CPU, a nie od zegara ADC. Dłuższe nagrania mają przerwy na przerwania (w Linuksie co kilka ms).
+- Z MIPS tempa nie zwiększymy (ok. 110 ns na odczyt RIU). 8051 byłby wolniejszy, ma ok. 1 KB RAM i przesyła 4,4 µs/bajt, więc nie daje ciągłego strumienia.
+
+Tryb zrzutu ADC do SRAM demodulatora (prawdziwe kolejne próbki z pełną częstotliwością ADC): w źródłach i bibliotekach tego drzewa nie ma nic poza multiplekserem zegara SRAM w MSB1233C (`reg_ckg_dvbtm_sram_adc_t22x`, TOP `0x16` = `0x0101` przy `SIM_ADC_DUMP`). Rejestru wyzwalającego zrzut i sposobu odczytu SRAM nie znaleziono ❓.
+
+#### Podsumowanie i co dalej (SDR z ADC, stan 2026-11-04)
+
+1. **Próbkowanie z MIPS działa** ✅: ok. 110 ns na próbkę (9,09 MS/s), rozrzut ok. 2 ns. Dziury co 512 próbek były błędami stron przy pierwszym zapisie do bufora, nie przerwaniami; po wypełnieniu i zablokowaniu bufora (`mlockall`) w 7 ms nagrania zostaje jedna dłuższa przerwa (ok. 130 µs).
+2. **Widmo pokazuje prawdziwe sygnały** ✅: stacja FM ok. 96,03 MHz przesuwa się o 1 MHz na 1 MHz strojenia, widać słabsze stacje i zbocze filtra pośredniej, DVB-T daje płaskie widmo.
+3. **Ograniczenia:** pasmo pośredniej 0,57–8,57 MHz złożone wokół 4,54 MHz (każde miejsce na wykresie to dwie częstotliwości RF); w dłuższych nagraniach co kilka ms przerwa na przerwanie systemu.
+4. **Kod na 8051 nie pomoże:** wolniejszy od MIPS (kilkanaście taktów na próbkę, ok. 0,3 µs lub więcej), ok. 1 KB RAM, przesył przez skrzynkę 4,4 µs/bajt, więc ani szybciej, ani w sposób ciągły. Jedyna zaleta (równe odstępy bez systemu operacyjnego) da się uzyskać też na MIPS.
+5. **Zrzut ADC do SRAM demodulatora** ❓: w źródłach i bibliotekach tylko multiplekser zegara SRAM z MSB1233C; rejestru wyzwalającego i sposobu odczytu brak. Dalej tylko ślepe przestawianie rejestrów (ryzyko zawieszenia płyty), nie robione bez zgody.
+6. **Prawdziwe ciągłe SDR** daje tylko zewnętrzny ADC na linii pośredniej (punkt 6 w „Możliwe sposoby dostępu”).
+
+Następne kroki do wyboru:
+- nagrania bez przerw: moduł jądra z wyłączonymi przerwaniami albo drugi VPE tylko do próbkowania;
+- demodulacja FM z nagrania (usłyszenie stacji), co wymaga dłuższych nagrań;
+- widmo na żywo z FFT na ekranie, jak w `rfscan`.
+
+#### Poszukiwanie sprzętowego strumienia ADC → DRAM (2026-11-04)
+
+Tropy z innych układów MStara (źródła i biblioteki w `mstar-mboot-master`):
+- `MIU_CLIENT_DEMOD_ADCDMA_W`: klient MIU „zapis ADC demodulatora przez DMA” (`libnos.a` układów celtics, clippers, keres, kris, madison, monaco, muji, napoli; wszystkie nowsze niż Kronus). W bibliotekach K1 brak nazw klientów MIU, więc nie wiadomo, czy Kronus go ma ❓.
+- `sboot/src/kaiserin/script_clk_gen.S`: `reg_ckg_demod_dma@0x0a[11:8] : ADC_CLK` w banku `0x1033`, czyli bajt `0x103315`. W Kronusie `0x103315` = `0x11` (domyślne, zegar wyłączony); `InitClkgen` go nie rusza, a `INTERN_DVBT_Exit` zapisuje mu `0x01` razem z innymi zegarami DVB-T. Włączenie (`0x00`) niczego widocznego nie zmieniło w bankach `0x1121`–`0x1127`.
+- Nazwy banków z `c_riubase.h` innych układów: `DEMOD_0`…`DEMOD_7` = `0x1120`–`0x1127`, `CLKGEN_DMD` = `0x111F`, `DMD_ANA_MISC` = `0x1128` (ADC), `DMDMCU51_IF` = `0x103480`, `DEMOD` = `0x110500`.
+- Sterowniki demodulatora K1 (`libdrvDEMOD.a`: DVB-T, DVB-C, ATSC, wspólne) piszą RIU tylko w bankach `0x101E`, `0x1033`, `0x1034`, `0x103C`, `0x111F`, `0x1120`, `0x1126`, `0x1128`. Żadnego DMA ani adresu DRAM.
+
+Zrzut banków z MIPS (`tools/board/dmdbank.c`, właściciel szyny = MIPS, 8 przebiegów, `*` = zmienne słowo):
+- `0x1120`: patrz wyżej (`0x2098` zmienne, `0x20C0`–`0x20FF` zmienne firmware'u).
+- `0x1121`–`0x1124`, `0x1127`: same zera. Strony XDATA `0x21`–`0x25` **nie** są tymi bankami (np. XDATA `0x2100` = `ff ff 3f 80`, a RIU `0x1121` = 0; RIU `0x1125` ma `0x112502` = `0x0800`, `0x112516` = `0x0001`, a XDATA `0x2500` = 0). Rejestry DSP demodulatora z tych stron nie są widoczne z MIPS ❓.
+- `0x1126`: skrzynka, blok `0x40` B powtórzony 4 razy.
+- `0x111F`: `0x111F08` = `0x0101` (zegar nieużywany przez sterownik, wyłączony), `0x111F1C` = `0x0101`, `0x111F1E`/`0x111F20`/`0x111F22` = 1.
+- `0x1033`: `0x103300` = `0x0511`, `0x10330C` = `0x0101`, `0x103314` = `0x1100`, `0x103316`/`0x10331A` = `0x0101`, `0x10331E` = `0x0010`; `0x103380`–`0x1033DF` wyglądają na losowe dane (klucze CA?).
+- `0x1034`: `0x103480` = `0x0100`, `0x103484` = `0x5E6E` (ładowanie firmware'u 8051), `0x1034C0`–`0x1034E0` URDMA.
+- Banki `0x1100`–`0x1115` czytają się bez problemu (niezerowe m.in. `0x1102`, `0x1103`, `0x1104`, `0x1106`, `0x1107`, `0x110D`, `0x1113`; `0x1114`/`0x1115` same `0x5802`).
+- ⚠ **Odczyt banku `0x1116` zawiesza płytę** (potrzebny reset zasilania). Banków `0x1117`–`0x111E` nie sprawdzano.
+
+Wniosek: w dostępnych materiałach nie ma sprzętowej ścieżki ADC → DRAM dla Kronusa. Jeśli istnieje (`demod_dma`), jej rejestry trzeba by szukać na ślepo.
 
 #### Skąd dane i jak liczona jest moc
 
